@@ -1,4 +1,5 @@
-# taken from https://github.com/Taited/clip-score/blob/master/src/clip_score/clip_score.py
+# Taken from https://github.com/Taited/clip-score/blob/master/src/clip_score/clip_score.py
+
 import os
 import torch
 import os.path as osp
@@ -7,22 +8,26 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader, Dataset
 from transformers import AutoModel, AutoProcessor, AutoTokenizer
 
+
 class DummyDataset(Dataset):
 
     FLAGS = ['img', 'txt']
 
-    def __init__(self,
-                 real_path,
-                 fake_path,
-                 real_flag: str = 'img',
-                 fake_flag: str = 'txt',
-                 transform=None,
-                 tokenizer=None) -> None:
+    def __init__(
+        self,
+        real_path,
+        fake_path,
+        real_flag: str = 'img',
+        fake_flag: str = 'txt',
+        transform=None,
+        tokenizer=None,
+    ) -> None:
         super().__init__()
         if real_flag not in self.FLAGS or fake_flag not in self.FLAGS:
-            raise TypeError('CLIP Score only support modality of {}. '
-                            'However, get {} and {}'.format(
-                                self.FLAGS, real_flag, fake_flag))
+            raise TypeError(
+                'CLIP Score only support modality of {}. '
+                'However, get {} and {}'.format(self.FLAGS, real_flag, fake_flag)
+            )
         self.real_folder = self._combine_without_prefix(real_path)
         self.real_flag = real_flag
         self.fake_folder = self._combine_without_prefix(fake_path)
@@ -33,14 +38,14 @@ class DummyDataset(Dataset):
 
     def __len__(self):
         if isinstance(self.real_folder, list):
-            real_folder_lenghth = len(self.real_folder)
+            real_folder_length = len(self.real_folder)
         else:
             real_folder_lenghth = 1
         if isinstance(self.fake_folder, list):
-            fake_folder_lenghth = len(self.fake_folder)
+            fake_folder_length = len(self.fake_folder)
         else:
             fake_folder_lenghth = 1
-        return max(real_folder_lenghth, fake_folder_lenghth)
+        return max(real_folder_lenghth, fake_folder_length)
 
     def __getitem__(self, index):
         if index >= len(self):
@@ -107,6 +112,7 @@ class DummyDataset(Dataset):
         folder.sort()
         return folder
 
+
 class ClipScorePredictor:
     def __init__(self, clip_model='openai/clip-vit-base-patch32', device=None):
         if device is None:
@@ -119,7 +125,64 @@ class ClipScorePredictor:
         self.processor = AutoProcessor.from_pretrained(clip_model)
         self.tokenizer = AutoTokenizer.from_pretrained(clip_model)
 
-    def evaluate_clip_score(self, real_path, fake_path, real_flag='img', fake_flag='txt', batch_size=50, num_workers=None):
+    def evaluate_clip_score(
+        self,
+        real_path,
+        fake_path,
+        real_flag='img',
+        fake_flag='txt',
+        batch_size=50,
+        num_workers=None,
+    ):
+        """Evaluate CLIP score between images and text
+
+        Supports both single files and folders evaluation.
+
+        Args:
+            real_path: Path to real image or folder
+            fake_path: Path to text prompt or folder, or text string directly
+            real_flag: Type of real input modality, 'img' or 'txt'
+            fake_flag: Type of fake input modality, 'img' or 'txt'
+            batch_size: Batch size
+            num_workers: Number of workers for data loader
+
+        Returns:
+            float: CLIP score
+        """
+        # Check if it's a single file
+        if os.path.isfile(real_path) and (
+            not os.path.exists(fake_path) or os.path.isfile(fake_path)
+        ):
+            return self._evaluate_single_file(
+                real_path, fake_path, real_flag, fake_flag
+            )
+        else:
+            return self.evaluate_folder_clip_score(
+                real_path, fake_path, real_flag, fake_flag, batch_size, num_workers
+            )
+
+    def evaluate_folder_clip_score(
+        self,
+        real_path,
+        fake_path,
+        real_flag='img',
+        fake_flag='txt',
+        batch_size=50,
+        num_workers=None,
+    ):
+        """Evaluate CLIP score between multiple files in folders
+
+        Args:
+            real_path: Path to folder containing real inputs
+            fake_path: Path to folder containing fake inputs
+            real_flag: Type of real input modality, 'img' or 'txt'
+            fake_flag: Type of fake input modality, 'img' or 'txt'
+            batch_size: Batch size
+            num_workers: Number of workers for data loader
+
+        Returns:
+            float: CLIP score
+        """
         if num_workers is None:
             try:
                 num_cpus = len(os.sched_getaffinity(0))
@@ -127,12 +190,21 @@ class ClipScorePredictor:
                 num_cpus = os.cpu_count()
             num_workers = min(num_cpus, 8) if num_cpus is not None else 0
 
-        dataset = DummyDataset(real_path, fake_path, real_flag, fake_flag, transform=self.processor, tokenizer=self.tokenizer)
-        dataloader = DataLoader(dataset, batch_size, num_workers=num_workers, pin_memory=True)
+        dataset = DummyDataset(
+            real_path,
+            fake_path,
+            real_flag,
+            fake_flag,
+            transform=self.processor,
+            tokenizer=self.tokenizer,
+        )
+        dataloader = DataLoader(
+            dataset, batch_size, num_workers=num_workers, pin_memory=True
+        )
 
         print('Calculating CLIP Score:')
-        score_acc = 0.
-        sample_num = 0.
+        score_acc = 0.0
+        sample_num = 0.0
         for batch_data in tqdm(dataloader):
             real = batch_data['real']
             real_features = self._forward_modality(real, real_flag)
@@ -140,8 +212,12 @@ class ClipScorePredictor:
             fake_features = self._forward_modality(fake, fake_flag)
 
             # normalize features
-            real_features = real_features / real_features.norm(dim=1, keepdim=True).to(torch.float32)
-            fake_features = fake_features / fake_features.norm(dim=1, keepdim=True).to(torch.float32)
+            real_features = real_features / real_features.norm(dim=1, keepdim=True).to(
+                torch.float32
+            )
+            fake_features = fake_features / fake_features.norm(dim=1, keepdim=True).to(
+                torch.float32
+            )
 
             # calculate scores
             score = (fake_features * real_features).sum()
@@ -150,6 +226,62 @@ class ClipScorePredictor:
 
         clip_score = score_acc / sample_num
         return clip_score.cpu().item()
+
+    def _evaluate_single_file(
+        self, image_path, text_path_or_string, image_flag='img', text_flag='txt'
+    ):
+        """Evaluate CLIP score between a single image file and text
+
+        Args:
+            image_path: Path to image file
+            text_path_or_string: Path to text file or text string directly
+            image_flag: Type of image input modality, default is 'img'
+            text_flag: Type of text input modality, default is 'txt'
+
+        Returns:
+            float: CLIP score
+        """
+        # Determine which is image and which is text
+        if image_flag == 'img' and text_flag == 'txt':
+            img_path, txt_path = image_path, text_path_or_string
+            img_flag, txt_flag = image_flag, text_flag
+        elif image_flag == 'txt' and text_flag == 'img':
+            img_path, txt_path = text_path_or_string, image_path
+            img_flag, txt_flag = text_flag, image_flag
+        else:
+            raise ValueError("Must specify one 'img' and one 'txt' modality")
+
+        # Create a single sample dataset
+        dataset = DummyDataset(
+            img_path,
+            txt_path,
+            img_flag,
+            txt_flag,
+            transform=self.processor,
+            tokenizer=self.tokenizer,
+        )
+
+        # Get data
+        sample = dataset[0]
+        img_data = sample['real'] if img_flag == 'real_flag' else sample['fake']
+        txt_data = sample['fake'] if txt_flag == 'txt' else sample['real']
+
+        # Compute features
+        img_features = self._forward_modality(img_data, 'img')
+        txt_features = self._forward_modality(txt_data, 'txt')
+
+        # Normalize features
+        img_features = img_features / img_features.norm(dim=1, keepdim=True).to(
+            torch.float32
+        )
+        txt_features = txt_features / txt_features.norm(dim=1, keepdim=True).to(
+            torch.float32
+        )
+
+        # Compute score
+        score = (img_features * txt_features).sum()
+
+        return score.cpu().item()
 
     def _forward_modality(self, data, flag):
         device = self.device

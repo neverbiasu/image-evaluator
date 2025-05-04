@@ -48,7 +48,7 @@ class ArcFaceDistPredictor:
         return faces[0].embedding
 
     def evaluate_arcface_distance(self, reference_path, generated_path):
-        """Evaluate ArcFace distance between reference and generated images
+        """Evaluate ArcFace distance between two images
 
         Args:
             reference_path: Reference image file path
@@ -68,7 +68,7 @@ class ArcFaceDistPredictor:
             ).item()
         )
 
-    def evaluate_folder_distance(self, reference_folder, generated_folder):
+    def evaluate_folder_arcface_distance(self, reference_folder, generated_folder):
         """Evaluate average ArcFace distance between images in two folders
 
         Args:
