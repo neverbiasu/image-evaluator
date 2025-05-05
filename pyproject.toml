@@ -1,0 +1,31 @@
+[tool.poetry]
+name = "image-evaluator"
+version = "0.1.0"
+description = "An automatic image evaluation script"
+authors = ["neverbiasu"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "image_evaluator"}]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+clip-score = "*"
+insightface = "*"
+open-clip-torch = "*"
+torch = ">=1.7.0"
+transformers = "*"
+pillow = "*"
+numpy = "*"
+tqdm = "*"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.0.0"
+black = "^23.0.0"
+isort = "^5.12.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+image-evaluator = "image_evaluator.main:main"

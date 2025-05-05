@@ -1,10 +1,11 @@
 import argparse
 import os
-from laion_ai_aesthetic_predictor import LaionAIAestheticPredictor
-from clip_score_predictor import ClipScorePredictor
-from arcface_dist_predictor import ArcFaceDistPredictor
+from image_evaluator.laion_ai_aesthetic_predictor import LaionAIAestheticPredictor
+from image_evaluator.clip_score_predictor import ClipScorePredictor
+from image_evaluator.arcface_dist_predictor import ArcFaceDistPredictor
 
-if __name__ == "__main__":
+
+def main():
     parser = argparse.ArgumentParser(
         description="Evaluate the aesthetic score of an image."
     )
@@ -60,3 +61,7 @@ if __name__ == "__main__":
         print(f"ArcFace Distance: {arcface_distance}")
     else:
         print("ArcFace Distance: Not evaluated (reference image required)")
+
+
+if __name__ == "__main__":
+    main()
