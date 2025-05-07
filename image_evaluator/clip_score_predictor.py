@@ -37,27 +37,30 @@ class DummyDataset(Dataset):
         # assert self._check()
 
     def __len__(self):
-        if isinstance(self.real_folder, list):
-            real_folder_length = len(self.real_folder)
-        else:
-            real_folder_lenghth = 1
-        if isinstance(self.fake_folder, list):
-            fake_folder_length = len(self.fake_folder)
-        else:
-            fake_folder_lenghth = 1
-        return max(real_folder_lenghth, fake_folder_length)
+        real_folder_length = len(self.real_folder) if isinstance(self.real_folder, list) else 1
+        fake_folder_length = len(self.fake_folder) if isinstance(self.fake_folder, list) else 1
+        return max(real_folder_length, fake_folder_length)
 
     def __getitem__(self, index):
         if index >= len(self):
             raise IndexError
+        
+        # 处理real_folder的索引边界
         if isinstance(self.real_folder, list):
-            real_path = self.real_folder[index]
+            # 使用取模操作确保索引在有效范围内
+            real_index = index % len(self.real_folder)
+            real_path = self.real_folder[real_index]
         else:
             real_path = self.real_folder
+            
+        # 处理fake_folder的索引边界
         if isinstance(self.fake_folder, list):
-            fake_path = self.fake_folder[index]
+            # 使用取模操作确保索引在有效范围内
+            fake_index = index % len(self.fake_folder)
+            fake_path = self.fake_folder[fake_index]
         else:
             fake_path = self.fake_folder
+            
         real_data = self._load_modality(real_path, self.real_flag)
         fake_data = self._load_modality(fake_path, self.fake_flag)
 
@@ -82,13 +85,19 @@ class DummyDataset(Dataset):
 
     def _load_txt(self, path):
         if osp.exists(path):
-            with open(path, 'r') as fp:
-                data = fp.read()
-                fp.close()
+            try:
+                # 首先尝试使用UTF-8编码
+                with open(path, 'r', encoding='utf-8') as fp:
+                    data = fp.read()
+            except UnicodeDecodeError:
+                # 如果UTF-8失败，尝试使用latin-1编码（可以处理任何字节序列）
+                with open(path, 'r', encoding='latin-1') as fp:
+                    data = fp.read()
         else:
             data = path
         if self.transform is not None:
-            data = self.tokenizer(data, padding=True, return_tensors='pt')
+            # 添加truncation=True参数以截断过长文本，设置max_length=77匹配CLIP模型限制
+            data = self.tokenizer(data, padding=True, truncation=True, max_length=77, return_tensors='pt')
             for key in data:
                 data[key] = data[key].squeeze()
         return data
@@ -183,12 +192,10 @@ class ClipScorePredictor:
         Returns:
             float: CLIP score
         """
-        if num_workers is None:
-            try:
-                num_cpus = len(os.sched_getaffinity(0))
-            except AttributeError:
-                num_cpus = os.cpu_count()
-            num_workers = min(num_cpus, 8) if num_cpus is not None else 0
+        # 强制将批大小设置为1，避免合并不同大小的张量
+        batch_size = 1
+        # 禁用多进程加载以避免工作进程中的错误
+        num_workers = 0
 
         dataset = DummyDataset(
             real_path,

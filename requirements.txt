@@ -1,3 +1,4 @@
 clip-score
 insightface
 open-clip-torch
+onnxruntime-gpu

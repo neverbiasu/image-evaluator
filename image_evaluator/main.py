@@ -44,7 +44,7 @@ def main():
 
     # ArcFace Distance Evaluation
     arcface_distance_predictor = ArcFaceDistPredictor()
-    if is_folder and args.reference and os.path.isdir(args.reference):
+    if is_folder and os.path.isdir(args.reference):
         arcface_distance = arcface_distance_predictor.evaluate_folder_arcface_distance(
             args.reference, args.image
         )
