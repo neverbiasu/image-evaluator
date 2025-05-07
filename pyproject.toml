@@ -11,6 +11,7 @@ packages = [{include = "image_evaluator"}]
 python = "^3.8"
 clip-score = "*"
 insightface = "*"
+onnxruntime-gpu = "*"
 open-clip-torch = "*"
 torch = ">=1.7.0"
 transformers = "*"
