@@ -25,16 +25,20 @@ black = "^23.0.0"
 isort = "^5.12.0"
 ruff = "^0.9.0"
 
+[tool.black]
+line-length = 79
+target-version = ["py311"]
+
 [tool.ruff]
 line-length = 79
 target-version = "py311"
 
 [tool.ruff.lint]
 select = [
-	"E",
-	"F",
-	"W",
-	"I",
+  "E",
+  "F",
+  "W",
+  "I",
 ]
 
 [tool.ruff.lint.isort]
