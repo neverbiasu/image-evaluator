@@ -1,10 +1,11 @@
 import os
+
+import numpy as np
 import torch
 import torch.nn.functional as F
-from torchvision import transforms
-from PIL import Image
 from insightface.app import FaceAnalysis
-import numpy as np
+from PIL import Image
+from torchvision import transforms
 
 
 class ArcFaceDistPredictor:
@@ -13,7 +14,7 @@ class ArcFaceDistPredictor:
         if device is None:
             ctx_id = 0 if torch.cuda.is_available() else -1
         else:
-            ctx_id = 0 if device == 'cuda' else -1
+            ctx_id = 0 if device == "cuda" else -1
 
         # Initialize ArcFace model
         self.app = FaceAnalysis(model_name)
@@ -24,7 +25,10 @@ class ArcFaceDistPredictor:
             [
                 transforms.Resize((112, 112)),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+                transforms.Normalize(
+                    mean=[0.5, 0.5, 0.5],
+                    std=[0.5, 0.5, 0.5],
+                ),
             ]
         )
 
@@ -35,7 +39,8 @@ class ArcFaceDistPredictor:
             image_path: Image file path
 
         Returns:
-            numpy.ndarray: Face embedding vector or None (if no face is detected)
+            numpy.ndarray: Face embedding vector or None
+            (if no face is detected)
         """
         # Read image and convert to NumPy array
         img = Image.open(image_path).convert("RGB")
@@ -55,7 +60,8 @@ class ArcFaceDistPredictor:
             generated_path: Generated image file path
 
         Returns:
-            float: ArcFace distance score or None (if face not detected in either image)
+            float: ArcFace distance score or None
+            (if face not detected in either image)
         """
         ref_embedding = self.get_face_embedding(reference_path)
         gen_embedding = self.get_face_embedding(generated_path)
@@ -68,7 +74,9 @@ class ArcFaceDistPredictor:
             ).item()
         )
 
-    def evaluate_folder_arcface_distance(self, reference_folder, generated_folder):
+    def evaluate_folder_arcface_distance(
+        self, reference_folder, generated_folder
+    ):
         """Evaluate average ArcFace distance between images in two folders
 
         Args:

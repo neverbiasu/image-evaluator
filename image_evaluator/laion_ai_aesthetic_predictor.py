@@ -1,23 +1,28 @@
 # Taken from https://github.com/LAION-AI/aesthetic-predictor/blob/main/asthetics_predictor.ipynb
 
 import os
-import torch
-import open_clip
-import torch.nn as nn
-from PIL import Image
 from os.path import expanduser  # pylint: disable=import-outside-toplevel
-from urllib.request import urlretrieve  # pylint: disable=import-outside-toplevel
+from urllib.request import (
+    urlretrieve,  # pylint: disable=import-outside-toplevel
+)
+
+import open_clip
+import torch
+import torch.nn as nn
+from PIL import Image, UnidentifiedImageError
 
 
 class LaionAIAestheticPredictor:
     def __init__(self, model_name="vit_l_14"):
         """Initialize the aesthetic predictor with a specified model."""
         self.model_name = model_name
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device(
+            "cuda" if torch.cuda.is_available() else "cpu"
+        )
         self.aes_model = self.get_aesthetic_model()
 
     def get_aesthetic_model(self):
-        """Load the aesthetic model based on the model type defined in __init__."""
+        """Load the aesthetic model based on the configured model type."""
         home = expanduser("~")
         cache_folder = home + "/.cache/emb_reader"
         path_to_model = cache_folder + f"/sa_0_4_{self.model_name}_linear.pth"
@@ -53,10 +58,10 @@ class LaionAIAestheticPredictor:
             self.aes_model = self.get_aesthetic_model()
 
         model, _, preprocess = open_clip.create_model_and_transforms(
-            'ViT-L-14', pretrained='openai'
+            "ViT-L-14", pretrained="openai"
         )
         try:
-            image = Image.open(image_path).convert('RGB')
+            image = Image.open(image_path).convert("RGB")
             image_tensor = preprocess(image).unsqueeze(0).to(self.device)
 
             with torch.no_grad():
@@ -65,7 +70,12 @@ class LaionAIAestheticPredictor:
                 score = self.aes_model(image_features)
 
             return score[0][0].item()
-        except Exception as e:
+        except (
+            UnidentifiedImageError,
+            OSError,
+            RuntimeError,
+            ValueError,
+        ) as e:
             print(f"Error evaluating image {image_path}: {e}")
             return None
 
@@ -84,7 +94,7 @@ class LaionAIAestheticPredictor:
         image_files = [
             f
             for f in os.listdir(folder_path)
-            if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.webp'))
+            if f.lower().endswith((".png", ".jpg", ".jpeg", ".bmp", ".webp"))
         ]
 
         if not image_files:
