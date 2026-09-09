@@ -31,41 +31,80 @@ class DummyDataset(Dataset):
                     self.FLAGS, real_flag, fake_flag
                 )
             )
-        self.real_folder = self._combine_without_prefix(real_path)
+        from image_evaluator._stem_pairing import (
+            allowed_exts_for_flag,
+            collect_flat_dir,
+            pair_dirs,
+        )
+
         self.real_flag = real_flag
-        self.fake_folder = self._combine_without_prefix(fake_path)
         self.fake_flag = fake_flag
         self.transform = transform
         self.tokenizer = tokenizer
+        real_is_dir = isinstance(real_path, str) and osp.isdir(real_path)
+        fake_is_dir = isinstance(fake_path, str) and osp.isdir(fake_path)
+        if real_is_dir and fake_is_dir:
+            self._mode = "paired"
+            self._pairs = pair_dirs(
+                real_path,
+                fake_path,
+                allowed_exts_for_flag(real_flag),
+                allowed_exts_for_flag(fake_flag),
+            )
+            self.real_folder = [r for r, _ in self._pairs]
+            self.fake_folder = [f for _, f in self._pairs]
+        elif real_is_dir:
+            self._mode = "broadcast_fake"
+            mapping = collect_flat_dir(
+                real_path, allowed_exts_for_flag(real_flag)
+            )
+            self._real_list = [mapping[s] for s in sorted(mapping)]
+            self._fake_scalar = fake_path
+            if isinstance(fake_path, str) and osp.isfile(fake_path):
+                if not os.access(fake_path, os.R_OK):
+                    raise OSError(f"Unreadable file: {fake_path}")
+            self.real_folder = list(self._real_list)
+            self.fake_folder = fake_path
+        elif fake_is_dir:
+            self._mode = "broadcast_real"
+            mapping = collect_flat_dir(
+                fake_path, allowed_exts_for_flag(fake_flag)
+            )
+            self._fake_list = [mapping[s] for s in sorted(mapping)]
+            self._real_scalar = real_path
+            if isinstance(real_path, str) and osp.isfile(real_path):
+                if not os.access(real_path, os.R_OK):
+                    raise OSError(f"Unreadable file: {real_path}")
+            self.real_folder = real_path
+            self.fake_folder = list(self._fake_list)
+        else:
+            self._mode = "scalar"
+            self.real_folder = real_path
+            self.fake_folder = fake_path
         # assert self._check()
 
     def __len__(self):
-        real_folder_length = (
-            len(self.real_folder) if isinstance(self.real_folder, list) else 1
-        )
-        fake_folder_length = (
-            len(self.fake_folder) if isinstance(self.fake_folder, list) else 1
-        )
-        return max(real_folder_length, fake_folder_length)
+        if self._mode == "paired":
+            return len(self._pairs)
+        if self._mode == "broadcast_fake":
+            return len(self._real_list)
+        if self._mode == "broadcast_real":
+            return len(self._fake_list)
+        return 1
 
     def __getitem__(self, index):
         if index >= len(self):
             raise IndexError
-
-        # 处理real_folder的索引边界
-        if isinstance(self.real_folder, list):
-            # 使用取模操作确保索引在有效范围内
-            real_index = index % len(self.real_folder)
-            real_path = self.real_folder[real_index]
+        if self._mode == "paired":
+            real_path, fake_path = self._pairs[index]
+        elif self._mode == "broadcast_fake":
+            real_path = self._real_list[index]
+            fake_path = self._fake_scalar
+        elif self._mode == "broadcast_real":
+            real_path = self._real_scalar
+            fake_path = self._fake_list[index]
         else:
             real_path = self.real_folder
-
-        # 处理fake_folder的索引边界
-        if isinstance(self.fake_folder, list):
-            # 使用取模操作确保索引在有效范围内
-            fake_index = index % len(self.fake_folder)
-            fake_path = self.fake_folder[fake_index]
-        else:
             fake_path = self.fake_folder
 
         real_data = self._load_modality(real_path, self.real_flag)
@@ -124,7 +163,7 @@ class DummyDataset(Dataset):
         return True
 
     def _combine_without_prefix(self, folder_path, prefix="."):
-        if not osp.exists(folder_path):
+        if not osp.isdir(folder_path):
             return folder_path
         folder = []
         for name in os.listdir(folder_path):
@@ -294,10 +333,8 @@ class ClipScorePredictor:
 
         # Get data
         sample = dataset[0]
-        img_data = (
-            sample["real"] if img_flag == "real_flag" else sample["fake"]
-        )
-        txt_data = sample["fake"] if txt_flag == "txt" else sample["real"]
+        img_data = sample["real"]
+        txt_data = sample["fake"]
 
         # Compute features
         img_features = self._forward_modality(img_data, "img")
@@ -321,9 +358,20 @@ class ClipScorePredictor:
         for key in data:
             data[key] = data[key].to(device)
         if flag == "img":
+            if (
+                "pixel_values" in data
+                and isinstance(data["pixel_values"], torch.Tensor)
+                and data["pixel_values"].ndim == 3
+            ):
+                data["pixel_values"] = data["pixel_values"].unsqueeze(0)
             features = self.model.get_image_features(**data)
         elif flag == "txt":
             features = self.model.get_text_features(**data)
         else:
             raise TypeError(f"Got unexpected modality: {flag}")
+        if isinstance(features, torch.Tensor):
+            return features
+        pooler_output = getattr(features, "pooler_output", None)
+        if isinstance(pooler_output, torch.Tensor):
+            return pooler_output
         return features

@@ -20,6 +20,13 @@ class LaionAIAestheticPredictor:
             "cuda" if torch.cuda.is_available() else "cpu"
         )
         self.aes_model = self.get_aesthetic_model()
+        self.clip_model, _, self.preprocess = (
+            open_clip.create_model_and_transforms(
+                "ViT-L-14", pretrained="openai", force_quick_gelu=True
+            )
+        )
+        self.clip_model.to(self.device)
+        self.clip_model.eval()
 
     def get_aesthetic_model(self):
         """Load the aesthetic model based on the configured model type."""
@@ -57,15 +64,12 @@ class LaionAIAestheticPredictor:
         if self.aes_model is None:
             self.aes_model = self.get_aesthetic_model()
 
-        model, _, preprocess = open_clip.create_model_and_transforms(
-            "ViT-L-14", pretrained="openai"
-        )
         try:
             image = Image.open(image_path).convert("RGB")
-            image_tensor = preprocess(image).unsqueeze(0).to(self.device)
+            image_tensor = self.preprocess(image).unsqueeze(0).to(self.device)
 
             with torch.no_grad():
-                image_features = model.encode_image(image_tensor)
+                image_features = self.clip_model.encode_image(image_tensor)
                 image_features /= image_features.norm(dim=-1, keepdim=True)
                 score = self.aes_model(image_features)
 

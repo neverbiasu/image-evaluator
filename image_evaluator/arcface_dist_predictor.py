@@ -1,5 +1,3 @@
-import os
-
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -79,20 +77,31 @@ class ArcFaceDistPredictor:
     ):
         """Evaluate average ArcFace distance between images in two folders
 
+        Stem-matched (M2-03): exact case-sensitive stems ignoring
+        extension. Any unscorable pair fails the whole batch.
+
         Args:
             reference_folder: Folder path containing reference images
             generated_folder: Folder path containing generated images
 
         Returns:
             float: Average ArcFace distance
+
+        Raises:
+            FileNotFoundError: stem sets differ or dirs are empty.
+            ValueError: duplicate stems or unsupported visible files.
+            OSError: unreadable files.
+            ValueError: any pair yields no face / cannot be scored.
         """
-        reference_images = sorted(os.listdir(reference_folder))
-        generated_images = sorted(os.listdir(generated_folder))
+        from image_evaluator._stem_pairing import IMAGE_EXTS, pair_dirs
+
+        pairs = pair_dirs(
+            reference_folder, generated_folder, IMAGE_EXTS, IMAGE_EXTS
+        )
         distances = []
-        for ref_img, gen_img in zip(reference_images, generated_images):
-            ref_path = os.path.join(reference_folder, ref_img)
-            gen_path = os.path.join(generated_folder, gen_img)
+        for ref_path, gen_path in pairs:
             dist = self.evaluate_arcface_distance(ref_path, gen_path)
-            if dist is not None:
-                distances.append(dist)
-        return np.mean(distances) if distances else None
+            if dist is None:
+                raise ValueError(f"Unscorable pair: {ref_path}, {gen_path}")
+            distances.append(dist)
+        return float(np.mean(distances))

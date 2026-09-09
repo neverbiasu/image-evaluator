@@ -18,6 +18,8 @@ transformers = "*"
 pillow = "*"
 numpy = "*"
 tqdm = "*"
+lpips = "*"
+scikit-image = "*"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.0.0"
