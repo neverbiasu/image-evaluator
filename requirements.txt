@@ -1,4 +1,11 @@
 clip-score
 insightface
 open-clip-torch
-onnxruntime-gpu
+onnxruntime; sys_platform == "darwin" or sys_platform == "linux"
+torch>=1.7.0
+transformers
+pillow
+numpy
+tqdm
+lpips
+scikit-image

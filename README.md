@@ -34,6 +34,21 @@ flowchart LR
 
 ## Quick Start
 
+### Installation
+
+`0.1.0a1` is an alpha preview and requires Python 3.11–3.14. Install the
+preview explicitly because package installers normally exclude prereleases:
+
+```bash
+python -m pip install --pre image-evaluator==0.1.0a1
+```
+
+The supported runtime path is macOS or Linux with CPU ONNX Runtime. Linux
+users who want the GPU runtime can replace `onnxruntime` with
+`onnxruntime-gpu` after installation. Windows is currently unverified.
+
+### Tutorial
+
 The CLI enforces explicit metric selection via `--metrics` and initializes only selected models:
 - `--metrics` (required): One or more of `aesthetic`, `clip`, `arcface`, `lpips`, `ssim`, `psnr`.
 - `--image` (required): Path to an image file or directory.
@@ -68,3 +83,17 @@ The CLI enforces explicit metric selection via `--metrics` and initializes only 
 1. **Protocol Consistency**: Always compare scores under identical model backbones and preprocessing pipelines.
 2. **Relative Comparison**: Avoid universal absolute thresholds; interpret scores relative to a baseline control.
 3. **Fail-Fast Spatial Dimension Policy**: Pairwise metrics (`lpips`, `ssim`, `psnr`) strictly reject mismatched image dimensions with `ValueError` to prevent artificial interpolation distortion. Align sizes beforehand via downsampling or super-resolution.
+4. **SSIM Minimum Size**: SSIM requires both image dimensions to be at least 11 pixels because it uses the documented 11 × 11 Gaussian window. Smaller inputs fail with `ValueError`.
+
+## Preview Status
+
+| Area | `0.1.0a1` status |
+| :--- | :--- |
+| Metrics | Aesthetic, CLIP, ArcFace, LPIPS, SSIM, PSNR |
+| macOS | Verified on Apple Silicon with Python 3.11 |
+| Linux | Release validation pending |
+| Windows | Unverified |
+| Dataset metrics | FID/KID planned for M4; not included |
+
+See [CHANGELOG.md](CHANGELOG.md) for the accepted user-facing changes and
+known preview limitations.

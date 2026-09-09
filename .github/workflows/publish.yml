@@ -1,14 +1,64 @@
-name: Python package
+name: Publish Python package
+
 on:
   push:
     tags:
       - "v*.*.*"
+
 jobs:
   build:
+    name: Validate and build distributions
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - name: Build and publish to pypi
-        uses: JRubics/poetry-publish@v2.1
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          pypi_token: ${{ secrets.PYPI_TOKEN }}
+          python-version: "3.11"
+      - name: Install build tools
+        run: python -m pip install --upgrade build packaging pytest ruff twine
+      - name: Install package on Linux
+        run: python -m pip install .
+      - name: Run release tests
+        run: |
+          python -m pytest -q
+          python -m ruff check .
+      - name: Verify tag matches package version
+        run: |
+          python - <<'PY'
+          import os
+          import tomllib
+          from packaging.version import Version
+
+          with open("pyproject.toml", "rb") as handle:
+              package_version = tomllib.load(handle)["tool"]["poetry"]["version"]
+          tag_version = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+          if Version(tag_version) != Version(package_version):
+              raise SystemExit(
+                  f"tag {tag_version!r} does not match package {package_version!r}"
+              )
+          PY
+      - name: Build distributions
+        run: python -m build
+      - name: Check distribution metadata
+        run: python -m twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-distributions
+          path: dist/
+
+  publish:
+    name: Publish distributions to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/image-evaluator
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: python-distributions
+          path: dist/
+      - name: Publish distributions
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_TOKEN }}
