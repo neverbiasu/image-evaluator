@@ -1,0 +1,36 @@
+name: Release preflight
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  install-and-test:
+    name: Python 3.11 / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install package and test tools
+        run: python -m pip install . pytest ruff
+      - name: Verify installed version
+        run: |
+          python - <<'PY'
+          from importlib.metadata import version
+
+          assert version("image-evaluator") == "0.1.0a1"
+          PY
+      - name: Run tests and lint
+        run: |
+          python -m pytest -q
+          python -m ruff check .
