@@ -91,8 +91,8 @@ The CLI enforces explicit metric selection via `--metrics` and initializes only 
 | :--- | :--- |
 | Metrics | Aesthetic, CLIP, ArcFace, LPIPS, SSIM, PSNR |
 | macOS | Verified on Apple Silicon with Python 3.11 |
-| Linux | Release validation pending |
-| Windows | Unverified |
+| Linux | Clean install and test suite verified on GitHub Actions with Python 3.11 |
+| Windows | External Python 3.12 smoke test passed for CLIP, LPIPS, SSIM, and PSNR; full support remains unverified |
 | Dataset metrics | FID/KID planned for M4; not included |
 
 See [CHANGELOG.md](CHANGELOG.md) for the accepted user-facing changes and

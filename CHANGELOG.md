@@ -26,7 +26,8 @@ All notable user-facing changes to `image-evaluator` are recorded here.
 
 ### Known limitations
 
-- Windows is unverified.
-- Linux release validation and external researcher preview feedback remain
-  release gates.
+- Windows has one external Python 3.12 smoke test covering CLIP, LPIPS, SSIM,
+  and PSNR; complete Windows support remains unverified.
+- The default CLIP model is intended for English prompts; multilingual prompt
+  quality has not been validated.
 - FID and KID are planned for M4 and are not part of this preview.
