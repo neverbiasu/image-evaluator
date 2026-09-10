@@ -2,7 +2,7 @@
 
 All notable user-facing changes to `image-evaluator` are recorded here.
 
-## [0.1.0a1] - Unreleased
+## [0.1.0a1] - 2026-09-10
 
 ### Added
 
