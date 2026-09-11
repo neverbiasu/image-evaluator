@@ -26,9 +26,12 @@ jobs:
       - name: Verify installed version
         run: |
           python - <<'PY'
+          import tomllib
           from importlib.metadata import version
 
-          assert version("image-evaluator") == "0.1.0a1"
+          with open("pyproject.toml", "rb") as f:
+              expected = tomllib.load(f)["tool"]["poetry"]["version"]
+          assert version("image-evaluator") == expected
           PY
       - name: Run tests and lint
         run: |

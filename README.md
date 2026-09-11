@@ -45,11 +45,10 @@ flowchart LR
 
 ### Installation
 
-`0.1.0a1` is an alpha preview and requires Python 3.11–3.14. Install the
-preview explicitly because package installers normally exclude prereleases:
+`image-evaluator` requires Python 3.11–3.14. Install the release via pip:
 
 ```bash
-python -m pip install --pre image-evaluator==0.1.0a1
+python -m pip install image-evaluator==0.2.0
 ```
 
 The supported runtime path is macOS or Linux with CPU ONNX Runtime. Linux
@@ -118,9 +117,9 @@ The CLI enforces explicit metric selection via `--metrics` and initializes only 
 6. **Sample Size Sensitivity & Unbiasedness**: FID is a biased estimator that overestimates distance on small sample sets ($N < 2048$, triggering a `UserWarning`). KID is an unbiased U-statistic estimator that can produce finite negative values near zero; these values reflect sample variance around zero and must not be truncated. KID defaults to deterministic `seed=0` for bit-exact reproducibility.
 7. **Human Preference Alignment**: PickScore assesses text-image alignment against trained human preference choices from the Pick-a-Pic dataset (`yuvalkirstain/PickScore_v1`). Scores are scaled softmax logits (typically in $[15, 25]$ on real benchmarks) where higher scores indicate stronger human preference. PickScore strictly requires an explicit text prompt (`--prompt`) and evaluates subjective desirability alongside objective fidelity.
 
-## Preview Status
+## Release Status
 
-| Area | `0.1.0a1` status |
+| Area | `0.2.0` status |
 | :--- | :--- |
 | Metrics | Aesthetic, CLIP, ArcFace, LPIPS, SSIM, PSNR, FID, KID, PickScore |
 | macOS | Verified on Apple Silicon with Python 3.11 |
@@ -130,4 +129,4 @@ The CLI enforces explicit metric selection via `--metrics` and initializes only 
 | Human preference | PickScore fully implemented via PickScore_v1 (yuvalkirstain/PickScore_v1) with calibrated likelihood logits |
 
 See [CHANGELOG.md](CHANGELOG.md) for the accepted user-facing changes and
-known preview limitations.
+known limitations.
