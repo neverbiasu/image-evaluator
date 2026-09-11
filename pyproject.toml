@@ -20,6 +20,7 @@ numpy = "*"
 tqdm = "*"
 lpips = "*"
 scikit-image = "*"
+clean-fid = "==0.1.35"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.0.0"

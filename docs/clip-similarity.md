@@ -14,7 +14,20 @@
 
 ## Meaning & Role
 
-CLIP Similarity measures semantic alignment between generated image embeddings and text prompt embeddings in a shared vision-language space. It is used to benchmark text-to-image prompt adherence and evaluate prompt engineering strategies.
+CLIP Similarity measures semantic alignment between image embeddings and text prompt embeddings in a shared vision-language latent space. The current CLI computes the raw L2-normalized cosine similarity:
+
+$$S_{\text{CLIP}}(v_{\text{img}}, v_{\text{txt}}) = \frac{v_{\text{img}}}{\|v_{\text{img}}\|_2} \cdot \frac{v_{\text{txt}}}{\|v_{\text{txt}}\|_2}$$
+
+It is primarily designed to evaluate Text-to-Image (T2I) synthesis adherence against descriptive generation prompts (for example, `"a golden retriever running across a sunny lawn"`).
+
+## Scenario Boundaries: T2I Generation vs. Image Editing
+
+CLIP Similarity is designed for **Text-to-Image (T2I) prompt adherence** (evaluating how well an image matches a descriptive scene prompt).
+
+**It is not suitable as an independent metric for image editing evaluation**:
+- **Cannot prove editing quality**: Computing CLIP similarity against an editing instruction (e.g. `"make it oil painting"`) or a target description cannot verify source content preservation, local constraints, or artifacts.
+- **Editing requires multi-dimensional evaluation**: Evaluating edited images requires pairwise fidelity against the original image (e.g. LPIPS, SSIM, PSNR in [pairwise-fidelity.md](pairwise-fidelity.md)) alongside separate perceptual quality checks.
+- **Image-Image comparison is not supported**: The current CLI strictly computes image-text raw cosine similarity. CLIP image-image comparison is not implemented.
 
 ## Interpretation & Guidance
 
@@ -24,7 +37,7 @@ CLIP Similarity measures semantic alignment between generated image embeddings a
 ## Limitations & Implementation Status
 
 1. Does not measure visual appeal, resolution, facial identity, or complex spatial relations.
-2. **Implementation Status**: Single-file path expansion (`_combine_without_prefix`) and tensor modality routing are fixed and covered by 8 mocked unit tests. Real-model end-to-end integration validation remains scheduled for M2.
+2. **Implementation Status**: Evaluates raw L2-normalized cosine similarity without scaling or clipping. Both single-file and folder-level evaluations are covered by unit and regression tests.
 
 ## Paper vs. Repository Distinction
 

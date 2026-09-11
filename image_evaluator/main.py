@@ -9,7 +9,17 @@ def main(args=None):
     parser.add_argument(
         "--metrics",
         nargs="+",
-        choices=["aesthetic", "clip", "arcface", "lpips", "ssim", "psnr"],
+        choices=[
+            "aesthetic",
+            "clip",
+            "arcface",
+            "lpips",
+            "ssim",
+            "psnr",
+            "fid",
+            "kid",
+            "pickscore",
+        ],
         required=True,
         help="Metrics to evaluate",
     )
@@ -23,7 +33,10 @@ def main(args=None):
         "--prompt",
         type=str,
         default=None,
-        help="Path to the prompt file or text prompt (required for 'clip')",
+        help=(
+            "Path to the prompt file or text prompt "
+            "(required for 'clip' and 'pickscore')"
+        ),
     )
     parser.add_argument(
         "--reference",
@@ -31,7 +44,7 @@ def main(args=None):
         default=None,
         help=(
             "Path to reference image or folder "
-            "(required for 'arcface', 'lpips', 'ssim', 'psnr')"
+            "(required for 'arcface', 'lpips', 'ssim', 'psnr', 'fid', 'kid')"
         ),
     )
     parsed_args = parser.parse_args(args)
@@ -39,52 +52,76 @@ def main(args=None):
     selected_metrics = set(parsed_args.metrics)
 
     # Validate dependent and prohibited options
-    if "clip" in selected_metrics:
+    prompt_metrics = {"clip", "pickscore"}
+    selected_prompt = selected_metrics & prompt_metrics
+    if selected_prompt:
         if parsed_args.prompt is None or not parsed_args.prompt.strip():
+            if len(selected_prompt) == 1:
+                single_metric = next(iter(selected_prompt))
+                parser.error(
+                    f"--prompt is required when '{single_metric}' "
+                    "metric is selected."
+                )
             parser.error(
-                "--prompt is required when 'clip' metric is selected."
+                "--prompt is required when prompt-based metrics are selected."
             )
     elif parsed_args.prompt is not None:
         parser.error(
-            "--prompt was provided but 'clip' metric was not selected."
+            "--prompt was provided but no prompt-based metric was selected."
         )
 
     pairwise_metrics = {"arcface", "lpips", "ssim", "psnr"}
+    reference_metrics = pairwise_metrics | {"fid", "kid"}
+    selected_reference = selected_metrics & reference_metrics
     selected_pairwise = selected_metrics & pairwise_metrics
-    if selected_pairwise:
+    if selected_reference:
         if (
             parsed_args.reference is None
             or not parsed_args.reference.strip()
         ):
-            if "arcface" in selected_pairwise and len(selected_pairwise) == 1:
+            if len(selected_reference) == 1:
+                single_metric = next(iter(selected_reference))
                 parser.error(
-                    "--reference is required when "
-                    "'arcface' metric is selected."
+                    f"--reference is required when '{single_metric}' "
+                    "metric is selected."
                 )
-            elif "lpips" in selected_pairwise and len(selected_pairwise) == 1:
-                parser.error(
-                    "--reference is required when 'lpips' metric is selected."
-                )
-            elif "ssim" in selected_pairwise and len(selected_pairwise) == 1:
-                parser.error(
-                    "--reference is required when 'ssim' metric is selected."
-                )
-            elif "psnr" in selected_pairwise and len(selected_pairwise) == 1:
-                parser.error(
-                    "--reference is required when 'psnr' metric is selected."
-                )
-            else:
-                parser.error(
-                    "--reference is required when reference-based "
-                    "metrics are selected."
-                )
-        is_image_folder = os.path.isdir(parsed_args.image)
-        is_ref_folder = os.path.isdir(parsed_args.reference)
-        if is_image_folder != is_ref_folder:
             parser.error(
-                "--image and --reference must both be files or both "
-                "be directories."
+                "--reference is required when reference-based "
+                "metrics are selected."
             )
+
+        for dataset_metric in ("fid", "kid"):
+            if dataset_metric in selected_metrics:
+                if not os.path.exists(parsed_args.image):
+                    parser.error(
+                        f"--image path does not exist: '{parsed_args.image}'"
+                    )
+                if not os.path.isdir(parsed_args.image):
+                    parser.error(
+                        "--image must be a directory when "
+                        f"'{dataset_metric}' metric is selected, "
+                        f"got file: '{parsed_args.image}'"
+                    )
+                if not os.path.exists(parsed_args.reference):
+                    parser.error(
+                        "--reference path does not exist: "
+                        f"'{parsed_args.reference}'"
+                    )
+                if not os.path.isdir(parsed_args.reference):
+                    parser.error(
+                        "--reference must be a directory when "
+                        f"'{dataset_metric}' metric is selected, "
+                        f"got file: '{parsed_args.reference}'"
+                    )
+
+        if selected_pairwise:
+            is_image_folder = os.path.isdir(parsed_args.image)
+            is_ref_folder = os.path.isdir(parsed_args.reference)
+            if is_image_folder != is_ref_folder:
+                parser.error(
+                    "--image and --reference must both be files or both "
+                    "be directories."
+                )
     elif parsed_args.reference is not None:
         parser.error(
             "--reference was provided but no reference-based metric "
@@ -185,6 +222,63 @@ def main(args=None):
                 parsed_args.reference, parsed_args.image
             )
         print(f"PSNR: {psnr_score}")
+
+    # FID Evaluation
+    if "fid" in selected_metrics:
+        from image_evaluator.fid_predictor import FIDPredictor
+
+        fid_predictor = FIDPredictor()
+        fid_result = fid_predictor.evaluate_folder_fid(
+            parsed_args.reference, parsed_args.image
+        )
+        print(
+            f"FID: {fid_result['fid']} "
+            f"(backend={fid_result['backend']}, "
+            f"version={fid_result['version']}, "
+            f"mode={fid_result['mode']}, "
+            f"model={fid_result['model']}, "
+            f"device={fid_result['device']}, "
+            f"Nref={fid_result['Nref']}, "
+            f"Ngen={fid_result['Ngen']})"
+        )
+
+    # KID Evaluation
+    if "kid" in selected_metrics:
+        from image_evaluator.kid_predictor import KIDPredictor
+
+        kid_predictor = KIDPredictor()
+        kid_result = kid_predictor.evaluate_folder_kid(
+            parsed_args.reference, parsed_args.image
+        )
+        print(
+            f"KID: {kid_result['kid']} "
+            f"(backend={kid_result['backend']}, "
+            f"version={kid_result['version']}, "
+            f"mode={kid_result['mode']}, "
+            f"model={kid_result['model']}, "
+            f"device={kid_result['device']}, "
+            f"num_subsets={kid_result['num_subsets']}, "
+            f"max_subset_size={kid_result['max_subset_size']}, "
+            f"seed={kid_result['seed']}, "
+            f"Nref={kid_result['Nref']}, "
+            f"Ngen={kid_result['Ngen']})"
+        )
+
+    # PickScore Evaluation
+    if "pickscore" in selected_metrics:
+        from image_evaluator.pickscore_predictor import PickScorePredictor
+
+        pickscore_predictor = PickScorePredictor()
+        if is_folder:
+            pickscore_res = pickscore_predictor.evaluate_folder(
+                parsed_args.image, parsed_args.prompt
+            )
+            print(f"PickScore: {pickscore_res.mean_score}")
+        else:
+            pickscore_score = pickscore_predictor.evaluate(
+                parsed_args.image, parsed_args.prompt
+            )
+            print(f"PickScore: {pickscore_score}")
 
 
 if __name__ == "__main__":
