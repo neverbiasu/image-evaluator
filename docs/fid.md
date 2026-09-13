@@ -68,13 +68,12 @@ FID is a **biased estimator**: for finite sample sizes, empirical covariance est
 - **Minimum Mathematical Bound ($N \ge 2$)**:
   At least 2 valid images are required in each directory to compute sample covariance. Any directory with fewer than 2 images raises `ValueError`.
 - **Sample Sensitivity Warning**:
-  When evaluating folders with small sample counts ($N < 2048$), `image-evaluator` emits a clear warning:
+  On every FID evaluation, `image-evaluator` emits a clear warning reminding users of finite-sample sensitivity:
   ```text
   UserWarning: FID is sensitive to sample size (Nref=3, Ngen=3). Statistical reliability requires task-specific convergence or repeated trials; Nref and Ngen are recorded for auditability.
   ```
-- **Recommended Benchmark Sample Counts**:
-  - Minimum exploratory evaluation: $N \ge 2,048$.
-  - Canonical benchmark publication standard: $N = 50,000$ (e.g. COCO-30k or ImageNet-50k).
+- **Benchmark Sample Counts**:
+  - Canonical benchmark publication standard: $N = 50,000$ (e.g. COCO-30k or ImageNet-50k). For smaller datasets, finite-sample bias increases significantly; pairing with unbiased KID is recommended.
 - **Audit Metadata Output**:
   Every CLI evaluation prints protocol metadata alongside the scalar FID score to prevent incomparable evaluations:
   ```text
