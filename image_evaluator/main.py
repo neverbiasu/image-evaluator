@@ -7,6 +7,85 @@ import sys
 from typing import Any
 
 import numpy as np
+from PIL import Image
+
+
+class CLIInputError(ValueError):
+    """Raised when expected CLI runtime inputs are invalid or missing."""
+
+
+def _verify_image_file(path: str) -> tuple[int, int]:
+    try:
+        with Image.open(path) as img:
+            size = img.size
+            img.verify()
+            return size
+    except Exception as exc:
+        raise CLIInputError(
+            f"Cannot identify or decode image file '{path}': {exc}"
+        ) from exc
+
+
+def _validate_runtime_inputs(
+    parsed_args: argparse.Namespace, selected_metrics: set[str]
+) -> None:
+    if not os.path.exists(parsed_args.image):
+        raise CLIInputError(
+            f"Image path does not exist: '{parsed_args.image}'"
+        )
+
+    is_folder = os.path.isdir(parsed_args.image)
+    pairwise_metrics = {"arcface", "lpips", "ssim", "psnr"}
+    selected_pairwise = selected_metrics & pairwise_metrics
+
+    if is_folder:
+        if not os.path.isdir(parsed_args.image):
+            raise CLIInputError(
+                f"Image path is not a directory: '{parsed_args.image}'"
+            )
+        if selected_pairwise:
+            if (
+                parsed_args.reference is None
+                or not os.path.exists(parsed_args.reference)
+            ):
+                raise CLIInputError(
+                    f"Reference path does not exist: '{parsed_args.reference}'"
+                )
+            if not os.path.isdir(parsed_args.reference):
+                raise CLIInputError(
+                    f"Reference path is not a directory: "
+                    f"'{parsed_args.reference}'"
+                )
+    else:
+        if not os.path.isfile(parsed_args.image):
+            raise CLIInputError(
+                f"Image path is not a regular file: '{parsed_args.image}'"
+            )
+        img_size = _verify_image_file(parsed_args.image)
+
+        if selected_pairwise:
+            if (
+                parsed_args.reference is None
+                or not os.path.exists(parsed_args.reference)
+            ):
+                raise CLIInputError(
+                    f"Reference path does not exist: '{parsed_args.reference}'"
+                )
+            if not os.path.isfile(parsed_args.reference):
+                raise CLIInputError(
+                    f"Reference path is not a regular file: "
+                    f"'{parsed_args.reference}'"
+                )
+            ref_size = _verify_image_file(parsed_args.reference)
+
+            sensitive_metrics = selected_pairwise & {"lpips", "ssim", "psnr"}
+            if sensitive_metrics and img_size != ref_size:
+                raise CLIInputError(
+                    f"Image size mismatch: reference has size {ref_size}, "
+                    f"generated image has size {img_size}. "
+                    f"Metrics {sorted(sensitive_metrics)} "
+                    f"require identical dimensions."
+                )
 
 
 def _normalize_json_values(obj: Any) -> Any:
@@ -167,6 +246,8 @@ def main(args=None):
             "--reference was provided but no reference-based metric "
             "was selected."
         )
+
+    _validate_runtime_inputs(parsed_args, selected_metrics)
 
     is_folder = os.path.isdir(parsed_args.image)
     results = {
@@ -370,5 +451,14 @@ def main(args=None):
     return results
 
 
+def cli(args=None) -> int:
+    try:
+        main(args)
+    except CLIInputError as exc:
+        print(f"image-evaluator: error: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
 if __name__ == "__main__":
-    main()
+    raise SystemExit(cli())

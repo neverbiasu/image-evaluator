@@ -52,4 +52,4 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-image-evaluator = "image_evaluator.main:main"
+image-evaluator = "image_evaluator.main:cli"
