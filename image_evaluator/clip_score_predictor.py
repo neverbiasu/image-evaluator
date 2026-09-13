@@ -212,9 +212,11 @@ class ClipScorePredictor:
         Returns:
             float: CLIP score
         """
-        # Check if it's a single file
-        if os.path.isfile(real_path) and (
-            not os.path.exists(fake_path) or os.path.isfile(fake_path)
+        # Check if it's a single file or in-memory image
+        is_mem = not isinstance(real_path, (str, os.PathLike))
+        if is_mem or (
+            os.path.isfile(real_path)
+            and (not os.path.exists(fake_path) or os.path.isfile(fake_path))
         ):
             return self._evaluate_single_file(
                 real_path, fake_path, real_flag, fake_flag
@@ -321,20 +323,40 @@ class ClipScorePredictor:
         else:
             raise ValueError("Must specify one 'img' and one 'txt' modality")
 
-        # Create a single sample dataset
-        dataset = DummyDataset(
-            img_path,
-            txt_path,
-            img_flag,
-            txt_flag,
-            transform=self.processor,
-            tokenizer=self.tokenizer,
-        )
+        if not isinstance(img_path, (str, os.PathLike)):
+            from image_evaluator._input_adapters import to_pil_image
 
-        # Get data
-        sample = dataset[0]
-        img_data = sample["real"]
-        txt_data = sample["fake"]
+            pil_img = to_pil_image(img_path)
+            img_data = self.processor(images=pil_img, return_tensors="pt")
+            if isinstance(txt_path, str) and not os.path.exists(txt_path):
+                txt_content = txt_path
+            else:
+                with open(txt_path, "r") as f:
+                    txt_content = f.read().strip()
+            txt_data = self.tokenizer(
+                txt_content,
+                padding=True,
+                truncation=True,
+                max_length=77,
+                return_tensors="pt",
+            )
+            for key in txt_data:
+                txt_data[key] = txt_data[key].squeeze()
+        else:
+            # Create a single sample dataset
+            dataset = DummyDataset(
+                img_path,
+                txt_path,
+                img_flag,
+                txt_flag,
+                transform=self.processor,
+                tokenizer=self.tokenizer,
+            )
+
+            # Get data
+            sample = dataset[0]
+            img_data = sample["real"]
+            txt_data = sample["fake"]
 
         # Compute features
         img_features = self._forward_modality(img_data, "img")

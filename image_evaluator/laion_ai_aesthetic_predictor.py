@@ -13,12 +13,20 @@ from PIL import Image, UnidentifiedImageError
 
 
 class LaionAIAestheticPredictor:
-    def __init__(self, model_name="vit_l_14"):
-        """Initialize the aesthetic predictor with a specified model."""
+    def __init__(self, model_name="vit_l_14", device=None):
+        """Initialize the aesthetic predictor with a specified model.
+
+        Args:
+            model_name: Model backbone name ('vit_l_14' or 'vit_b_32').
+            device: Computing device ('cuda', 'cpu', or None for auto-detect).
+        """
         self.model_name = model_name
-        self.device = torch.device(
-            "cuda" if torch.cuda.is_available() else "cpu"
-        )
+        if device is None:
+            self.device = torch.device(
+                "cuda" if torch.cuda.is_available() else "cpu"
+            )
+        else:
+            self.device = torch.device(device)
         self.aes_model = self.get_aesthetic_model()
         self.clip_model, _, self.preprocess = (
             open_clip.create_model_and_transforms(
@@ -53,19 +61,25 @@ class LaionAIAestheticPredictor:
         return m
 
     def evaluate_aesthetic_score(self, image_path):
-        """Evaluate the aesthetic score of a single image
+        """Evaluate the aesthetic score of a single image.
 
         Args:
-            image_path: Path to the image file
+            image_path: Path to the image file, PIL Image, or Tensor.
 
         Returns:
-            float: Aesthetic score of the image
+            float: Aesthetic score of the image, or None on error.
         """
         if self.aes_model is None:
             self.aes_model = self.get_aesthetic_model()
 
         try:
-            image = Image.open(image_path).convert("RGB")
+            if isinstance(image_path, (str, os.PathLike)):
+                image = Image.open(image_path).convert("RGB")
+            else:
+                from image_evaluator._input_adapters import to_pil_image
+
+                image = to_pil_image(image_path)
+
             image_tensor = self.preprocess(image).unsqueeze(0).to(self.device)
 
             with torch.no_grad():

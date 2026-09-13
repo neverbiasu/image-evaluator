@@ -1,5 +1,38 @@
 import argparse
+import contextlib
+import json
+import math
 import os
+import sys
+from typing import Any
+
+import numpy as np
+
+
+def _normalize_json_values(obj: Any) -> Any:
+    """Recursively convert non-finite float values (NaN, Inf, -Inf) to None.
+
+    Ensures strict RFC 8259 JSON compliance when serialized with
+    allow_nan=False. Supports Python floats and NumPy floating scalars.
+    """
+    if isinstance(obj, (float, np.floating)):
+        val = float(obj)
+        if not math.isfinite(val):
+            return None
+        return val
+    if isinstance(obj, (bool, np.bool_)):
+        return bool(obj)
+    if isinstance(obj, (int, np.integer)):
+        return int(obj)
+    if isinstance(obj, np.ndarray) and obj.ndim == 0:
+        return _normalize_json_values(obj.item())
+    if isinstance(obj, dict):
+        return {k: _normalize_json_values(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_normalize_json_values(v) for v in obj]
+    if isinstance(obj, tuple):
+        return tuple(_normalize_json_values(v) for v in obj)
+    return obj
 
 
 def main(args=None):
@@ -46,6 +79,13 @@ def main(args=None):
             "Path to reference image or folder "
             "(required for 'arcface', 'lpips', 'ssim', 'psnr', 'fid', 'kid')"
         ),
+    )
+    parser.add_argument(
+        "--format",
+        type=str,
+        choices=["text", "json"],
+        default="text",
+        help="Output format: 'text' (default) or 'json'",
     )
     parsed_args = parser.parse_args(args)
 
@@ -129,156 +169,205 @@ def main(args=None):
         )
 
     is_folder = os.path.isdir(parsed_args.image)
+    results = {
+        "status": "success",
+        "metrics": {},
+    }
 
-    # LAION AI Aesthetic Score
-    if "aesthetic" in selected_metrics:
-        from image_evaluator.laion_ai_aesthetic_predictor import (
-            LaionAIAestheticPredictor,
-        )
+    def _execute_metrics():
+        # LAION AI Aesthetic Score
+        if "aesthetic" in selected_metrics:
+            from image_evaluator.laion_ai_aesthetic_predictor import (
+                LaionAIAestheticPredictor,
+            )
 
-        aesthetic_predictor = LaionAIAestheticPredictor()
-        if is_folder:
-            aesthetic_score = (
-                aesthetic_predictor.evaluate_folder_aesthetic_score(
+            aesthetic_predictor = LaionAIAestheticPredictor()
+            if is_folder:
+                aesthetic_score = (
+                    aesthetic_predictor.evaluate_folder_aesthetic_score(
+                        parsed_args.image
+                    )
+                )
+            else:
+                aesthetic_score = aesthetic_predictor.evaluate_aesthetic_score(
                     parsed_args.image
                 )
+            results["metrics"]["aesthetic"] = aesthetic_score
+            if parsed_args.format == "text":
+                print(f"LAION AI Aesthetic Score: {aesthetic_score}")
+
+        # CLIP Score Evaluation
+        if "clip" in selected_metrics:
+            from image_evaluator.clip_score_predictor import (
+                ClipScorePredictor,
             )
-        else:
-            aesthetic_score = aesthetic_predictor.evaluate_aesthetic_score(
-                parsed_args.image
+
+            clip_predictor = ClipScorePredictor()
+            clip_score = clip_predictor.evaluate_clip_score(
+                parsed_args.image, parsed_args.prompt
             )
-        print(f"LAION AI Aesthetic Score: {aesthetic_score}")
+            results["metrics"]["clip"] = clip_score
+            if parsed_args.format == "text":
+                print(f"CLIP Score: {clip_score}")
 
-    # CLIP Score Evaluation
-    if "clip" in selected_metrics:
-        from image_evaluator.clip_score_predictor import ClipScorePredictor
+        # ArcFace Distance Evaluation
+        if "arcface" in selected_metrics:
+            from image_evaluator.arcface_dist_predictor import (
+                ArcFaceDistPredictor,
+            )
 
-        clip_predictor = ClipScorePredictor()
-        clip_score = clip_predictor.evaluate_clip_score(
-            parsed_args.image, parsed_args.prompt
-        )
-        print(f"CLIP Score: {clip_score}")
+            arcface_predictor = ArcFaceDistPredictor()
+            if is_folder:
+                arcface_distance = (
+                    arcface_predictor.evaluate_folder_arcface_distance(
+                        parsed_args.reference, parsed_args.image
+                    )
+                )
+            else:
+                arcface_distance = (
+                    arcface_predictor.evaluate_arcface_distance(
+                        parsed_args.reference, parsed_args.image
+                    )
+                )
+            results["metrics"]["arcface"] = arcface_distance
+            if parsed_args.format == "text":
+                print(f"ArcFace Distance: {arcface_distance}")
 
-    # ArcFace Distance Evaluation
-    if "arcface" in selected_metrics:
-        from image_evaluator.arcface_dist_predictor import (
-            ArcFaceDistPredictor,
-        )
+        # LPIPS Distance Evaluation
+        if "lpips" in selected_metrics:
+            from image_evaluator.lpips_predictor import LPIPSPredictor
 
-        arcface_predictor = ArcFaceDistPredictor()
-        if is_folder:
-            arcface_distance = (
-                arcface_predictor.evaluate_folder_arcface_distance(
+            lpips_predictor = LPIPSPredictor()
+            if is_folder:
+                lpips_distance = lpips_predictor.evaluate_folder_lpips(
                     parsed_args.reference, parsed_args.image
                 )
-            )
-        else:
-            arcface_distance = arcface_predictor.evaluate_arcface_distance(
+            else:
+                lpips_distance = lpips_predictor.evaluate_lpips(
+                    parsed_args.reference, parsed_args.image
+                )
+            results["metrics"]["lpips"] = lpips_distance
+            if parsed_args.format == "text":
+                print(f"LPIPS Distance: {lpips_distance}")
+
+        # SSIM Similarity Evaluation
+        if "ssim" in selected_metrics:
+            from image_evaluator.ssim_predictor import SSIMPredictor
+
+            ssim_predictor = SSIMPredictor()
+            if is_folder:
+                ssim_score = ssim_predictor.evaluate_folder_ssim(
+                    parsed_args.reference, parsed_args.image
+                )
+            else:
+                ssim_score = ssim_predictor.evaluate_ssim(
+                    parsed_args.reference, parsed_args.image
+                )
+            results["metrics"]["ssim"] = ssim_score
+            if parsed_args.format == "text":
+                print(f"SSIM: {ssim_score}")
+
+        # PSNR Evaluation
+        if "psnr" in selected_metrics:
+            from image_evaluator.psnr_predictor import PSNRPredictor
+
+            psnr_predictor = PSNRPredictor()
+            if is_folder:
+                psnr_score = psnr_predictor.evaluate_folder_psnr(
+                    parsed_args.reference, parsed_args.image
+                )
+            else:
+                psnr_score = psnr_predictor.evaluate_psnr(
+                    parsed_args.reference, parsed_args.image
+                )
+            if math.isinf(psnr_score):
+                results["metrics"]["psnr"] = None
+                results["metrics"]["psnr_raw"] = (
+                    "inf" if psnr_score > 0 else "-inf"
+                )
+            elif math.isnan(psnr_score):
+                results["metrics"]["psnr"] = None
+                results["metrics"]["psnr_raw"] = "nan"
+            else:
+                results["metrics"]["psnr"] = psnr_score
+                results["metrics"]["psnr_raw"] = str(psnr_score)
+            if parsed_args.format == "text":
+                print(f"PSNR: {psnr_score}")
+
+        # FID Evaluation
+        if "fid" in selected_metrics:
+            from image_evaluator.fid_predictor import FIDPredictor
+
+            fid_predictor = FIDPredictor()
+            fid_result = fid_predictor.evaluate_folder_fid(
                 parsed_args.reference, parsed_args.image
             )
-        print(f"ArcFace Distance: {arcface_distance}")
+            results["metrics"]["fid"] = fid_result
+            if parsed_args.format == "text":
+                print(
+                    f"FID: {fid_result['fid']} "
+                    f"(backend={fid_result['backend']}, "
+                    f"version={fid_result['version']}, "
+                    f"mode={fid_result['mode']}, "
+                    f"model={fid_result['model']}, "
+                    f"device={fid_result['device']}, "
+                    f"Nref={fid_result['Nref']}, "
+                    f"Ngen={fid_result['Ngen']})"
+                )
 
-    # LPIPS Distance Evaluation
-    if "lpips" in selected_metrics:
-        from image_evaluator.lpips_predictor import LPIPSPredictor
+        # KID Evaluation
+        if "kid" in selected_metrics:
+            from image_evaluator.kid_predictor import KIDPredictor
 
-        lpips_predictor = LPIPSPredictor()
-        if is_folder:
-            lpips_distance = lpips_predictor.evaluate_folder_lpips(
+            kid_predictor = KIDPredictor()
+            kid_result = kid_predictor.evaluate_folder_kid(
                 parsed_args.reference, parsed_args.image
             )
-        else:
-            lpips_distance = lpips_predictor.evaluate_lpips(
-                parsed_args.reference, parsed_args.image
+            results["metrics"]["kid"] = kid_result
+            if parsed_args.format == "text":
+                print(
+                    f"KID: {kid_result['kid']} "
+                    f"(backend={kid_result['backend']}, "
+                    f"version={kid_result['version']}, "
+                    f"mode={kid_result['mode']}, "
+                    f"model={kid_result['model']}, "
+                    f"device={kid_result['device']}, "
+                    f"num_subsets={kid_result['num_subsets']}, "
+                    f"max_subset_size={kid_result['max_subset_size']}, "
+                    f"seed={kid_result['seed']}, "
+                    f"Nref={kid_result['Nref']}, "
+                    f"Ngen={kid_result['Ngen']})"
+                )
+
+        # PickScore Evaluation
+        if "pickscore" in selected_metrics:
+            from image_evaluator.pickscore_predictor import (
+                PickScorePredictor,
             )
-        print(f"LPIPS Distance: {lpips_distance}")
 
-    # SSIM Similarity Evaluation
-    if "ssim" in selected_metrics:
-        from image_evaluator.ssim_predictor import SSIMPredictor
+            pickscore_predictor = PickScorePredictor()
+            if is_folder:
+                pickscore_res = pickscore_predictor.evaluate_folder(
+                    parsed_args.image, parsed_args.prompt
+                )
+                pickscore_score = pickscore_res.mean_score
+            else:
+                pickscore_score = pickscore_predictor.evaluate(
+                    parsed_args.image, parsed_args.prompt
+                )
+            results["metrics"]["pickscore"] = pickscore_score
+            if parsed_args.format == "text":
+                print(f"PickScore: {pickscore_score}")
 
-        ssim_predictor = SSIMPredictor()
-        if is_folder:
-            ssim_score = ssim_predictor.evaluate_folder_ssim(
-                parsed_args.reference, parsed_args.image
-            )
-        else:
-            ssim_score = ssim_predictor.evaluate_ssim(
-                parsed_args.reference, parsed_args.image
-            )
-        print(f"SSIM: {ssim_score}")
+    if parsed_args.format == "json":
+        with contextlib.redirect_stdout(sys.stderr):
+            _execute_metrics()
+        clean_results = _normalize_json_values(results)
+        print(json.dumps(clean_results, indent=2, allow_nan=False))
+        return clean_results
 
-    # PSNR Evaluation
-    if "psnr" in selected_metrics:
-        from image_evaluator.psnr_predictor import PSNRPredictor
-
-        psnr_predictor = PSNRPredictor()
-        if is_folder:
-            psnr_score = psnr_predictor.evaluate_folder_psnr(
-                parsed_args.reference, parsed_args.image
-            )
-        else:
-            psnr_score = psnr_predictor.evaluate_psnr(
-                parsed_args.reference, parsed_args.image
-            )
-        print(f"PSNR: {psnr_score}")
-
-    # FID Evaluation
-    if "fid" in selected_metrics:
-        from image_evaluator.fid_predictor import FIDPredictor
-
-        fid_predictor = FIDPredictor()
-        fid_result = fid_predictor.evaluate_folder_fid(
-            parsed_args.reference, parsed_args.image
-        )
-        print(
-            f"FID: {fid_result['fid']} "
-            f"(backend={fid_result['backend']}, "
-            f"version={fid_result['version']}, "
-            f"mode={fid_result['mode']}, "
-            f"model={fid_result['model']}, "
-            f"device={fid_result['device']}, "
-            f"Nref={fid_result['Nref']}, "
-            f"Ngen={fid_result['Ngen']})"
-        )
-
-    # KID Evaluation
-    if "kid" in selected_metrics:
-        from image_evaluator.kid_predictor import KIDPredictor
-
-        kid_predictor = KIDPredictor()
-        kid_result = kid_predictor.evaluate_folder_kid(
-            parsed_args.reference, parsed_args.image
-        )
-        print(
-            f"KID: {kid_result['kid']} "
-            f"(backend={kid_result['backend']}, "
-            f"version={kid_result['version']}, "
-            f"mode={kid_result['mode']}, "
-            f"model={kid_result['model']}, "
-            f"device={kid_result['device']}, "
-            f"num_subsets={kid_result['num_subsets']}, "
-            f"max_subset_size={kid_result['max_subset_size']}, "
-            f"seed={kid_result['seed']}, "
-            f"Nref={kid_result['Nref']}, "
-            f"Ngen={kid_result['Ngen']})"
-        )
-
-    # PickScore Evaluation
-    if "pickscore" in selected_metrics:
-        from image_evaluator.pickscore_predictor import PickScorePredictor
-
-        pickscore_predictor = PickScorePredictor()
-        if is_folder:
-            pickscore_res = pickscore_predictor.evaluate_folder(
-                parsed_args.image, parsed_args.prompt
-            )
-            print(f"PickScore: {pickscore_res.mean_score}")
-        else:
-            pickscore_score = pickscore_predictor.evaluate(
-                parsed_args.image, parsed_args.prompt
-            )
-            print(f"PickScore: {pickscore_score}")
+    _execute_metrics()
+    return results
 
 
 if __name__ == "__main__":

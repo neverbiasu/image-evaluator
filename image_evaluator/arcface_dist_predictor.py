@@ -34,15 +34,24 @@ class ArcFaceDistPredictor:
         """Get face embedding vector
 
         Args:
-            image_path: Image file path
+            image_path: Image file path, PIL Image, Tensor, or numpy array.
 
         Returns:
             numpy.ndarray: Face embedding vector or None
             (if no face is detected)
         """
+        import os
+
         # Read image and convert to NumPy array
-        img = Image.open(image_path).convert("RGB")
-        img = np.array(img)
+        if isinstance(image_path, (str, os.PathLike)):
+            img = Image.open(image_path).convert("RGB")
+            img = np.array(img)
+        elif isinstance(image_path, np.ndarray):
+            img = image_path
+        else:
+            from image_evaluator._input_adapters import to_pil_image
+
+            img = np.array(to_pil_image(image_path))
 
         # Get face embedding
         faces = self.app.get(img)

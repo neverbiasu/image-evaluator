@@ -48,7 +48,7 @@ flowchart LR
 `image-evaluator` requires Python 3.11–3.14. Install the release via pip:
 
 ```bash
-python -m pip install image-evaluator==0.2.0
+python -m pip install image-evaluator==0.3.0
 ```
 
 The supported runtime path is macOS or Linux with CPU ONNX Runtime. Linux
@@ -62,6 +62,7 @@ The CLI enforces explicit metric selection via `--metrics` and initializes only 
 - `--image` (required): Path to an image file or directory (must be a directory when `fid` or `kid` is selected).
 - `--prompt`: Required when `clip` or `pickscore` is selected; prohibited otherwise.
 - `--reference`: Required when reference-based metrics (`arcface`, `lpips`, `ssim`, `psnr`, `fid`, `kid`) are selected; prohibited otherwise (must be a directory when `fid` or `kid` is selected).
+- `--format`: Output format, either `text` (default) or `json` (for CI/CD and `jq` pipelines).
 
 1. **Aesthetic evaluation only**:
    ```bash
@@ -78,18 +79,16 @@ The CLI enforces explicit metric selection via `--metrics` and initializes only 
    image-evaluator --metrics lpips ssim psnr --image path/to/image.png --reference path/to/ref.png
    ```
 
-4. **Dataset distribution metrics (FID and KID)**:
+4. **Structured JSON output for CI/CD automation**:
+   ```bash
+   image-evaluator --metrics ssim psnr --image img.png --reference ref.png --format json | jq .metrics.ssim
+   ```
+
+5. **Dataset distribution metrics (FID and KID)**:
    ```bash
    image-evaluator --metrics fid kid \
        --reference path/to/real_images/ \
        --image path/to/generated_images/
-   ```
-
-5. **Fidelity triad and distribution joint evaluation**:
-   ```bash
-   image-evaluator --metrics lpips ssim psnr fid kid \
-       --reference path/to/reference_dir/ \
-       --image path/to/generated_dir/
    ```
 
 6. **PickScore human preference evaluation**:
@@ -107,6 +106,27 @@ The CLI enforces explicit metric selection via `--metrics` and initializes only 
        --reference path/to/refs/
    ```
 
+### Python SDK (Zero-Disk-I/O Memory Stream)
+
+For single-image and pairwise metrics (`aesthetic`, `clip`, `arcface`, `lpips`, `ssim`, `psnr`, `pickscore`), evaluate in-memory `PIL.Image`, `torch.Tensor`, or `numpy.ndarray` objects directly without saving to disk (dataset metrics `fid` and `kid` require directory paths):
+
+```python
+import torch
+from image_evaluator import evaluate
+
+# Evaluate in-memory PyTorch tensors directly
+t_img = torch.rand(3, 256, 256)
+t_ref = torch.rand(3, 256, 256)
+
+scores = evaluate(
+    metrics=["ssim", "psnr"],
+    image=t_img,
+    reference=t_ref,
+    device="cpu",
+)
+print(scores)  # {'ssim': 0.0012, 'psnr': 8.142}
+```
+
 ## Interpretation & Protocol Guidelines
 
 1. **Protocol Consistency**: Always compare scores under identical model backbones and preprocessing pipelines.
@@ -119,7 +139,7 @@ The CLI enforces explicit metric selection via `--metrics` and initializes only 
 
 ## Release Status
 
-| Area | `0.2.0` status |
+| Area | `0.3.0` status |
 | :--- | :--- |
 | Metrics | Aesthetic, CLIP, ArcFace, LPIPS, SSIM, PSNR, FID, KID, PickScore |
 | macOS | Verified on Apple Silicon with Python 3.11 |

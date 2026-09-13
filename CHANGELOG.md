@@ -2,6 +2,29 @@
 
 All notable user-facing changes to `image-evaluator` are recorded here.
 
+## [0.3.0] - 2026-09-13
+
+### Added
+
+- Added a top-level Python `evaluate(...)` API with lazy predictor imports.
+- Added in-memory PIL, PyTorch Tensor, and NumPy inputs for single-image and
+  pairwise metrics; FID and KID remain directory-based metrics.
+- Added CLI `--format json` output for automation and pipeline integration.
+- Added the AI-ready documentation site with interactive metric examples and
+  machine-readable documentation endpoints.
+
+### Changed
+
+- Propagated the public `device` argument consistently across predictors.
+- Preserved floating-point Tensor precision and defined deterministic grayscale
+  and RGBA channel conversion behavior.
+
+### Fixed
+
+- Enforced RFC 8259 JSON output by converting non-finite Python and NumPy values
+  to `null` and serializing with `allow_nan=False`.
+- Preserved Python and NumPy boolean values as JSON `true` and `false`.
+
 ## [0.2.0] - 2026-09-11
 
 ### Added

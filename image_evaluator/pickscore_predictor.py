@@ -237,11 +237,11 @@ class PickScorePredictor:
 
         return score
 
-    def evaluate(self, image_path: str, prompt: str) -> float:
+    def evaluate(self, image_path: Any, prompt: str) -> float:
         """Evaluate PickScore between a single image and text prompt.
 
         Args:
-            image_path: Path to the image file.
+            image_path: Path to the image file, PIL Image, or Tensor.
             prompt: Text prompt describing the image.
 
         Returns:
@@ -257,12 +257,16 @@ class PickScorePredictor:
                 "Prompt cannot be empty for PickScore evaluation."
             )
 
-        _validate_image_file(image_path)
+        if isinstance(image_path, (str, os.PathLike)):
+            _validate_image_file(str(image_path))
+            with Image.open(image_path) as img:
+                pil_img = img.convert("RGB")
+        else:
+            from image_evaluator._input_adapters import to_pil_image
+
+            pil_img = to_pil_image(image_path)
 
         model, processor = self._load_model()
-
-        with Image.open(image_path) as img:
-            pil_img = img.convert("RGB")
 
         raw_image_inputs = processor(
             images=pil_img,
