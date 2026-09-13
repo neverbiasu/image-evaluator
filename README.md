@@ -127,6 +127,35 @@ scores = evaluate(
 print(scores)  # {'ssim': 0.0012, 'psnr': 8.142}
 ```
 
+### Batch Evaluation & Performance Best Practices
+
+When evaluating multiple images, avoid running the CLI in shell loops (`for f in *.png; do ...`), which re-initializes deep models ($N$ times) and introduces massive cold-start friction (~25-35s for 10 images).
+
+Instead, choose between two high-throughput native paradigms:
+
+1. **Native CLI Directory Mode** (Single model initialization, ~2-3s for 10 images):
+   ```bash
+   image-evaluator --metrics clip --image ./generated/ --prompt "a golden retriever on a sunny lawn"
+   image-evaluator --metrics lpips ssim psnr --image ./generated/ --reference ./ground_truth/
+   ```
+
+2. **Python Predictor Reuse** (Zero reloading overhead, memory-resident tensors/PIL, ~1.5-2.0s for 10 images):
+   ```python
+   from PIL import Image
+   from image_evaluator import ClipScorePredictor, SSIMPredictor
+
+   # Instantiate once; weights stay resident in memory/VRAM
+   clip_pred = ClipScorePredictor(device="cpu")
+   ssim_pred = SSIMPredictor()
+
+   # High-throughput in-memory loop
+   samples = [("img1.png", "prompt1"), ("img2.png", "prompt2")]
+   for path, prompt in samples:
+       score = clip_pred.evaluate_clip_score(path, prompt)
+   ```
+
+See the full [Task Selection Guide](docs-site/content/docs/guides/task-selection.mdx) and [Batch Performance Guide](docs-site/content/docs/guides/batch-performance.mdx) on the documentation site.
+
 ## Interpretation & Protocol Guidelines
 
 1. **Protocol Consistency**: Always compare scores under identical model backbones and preprocessing pipelines.
@@ -134,8 +163,8 @@ print(scores)  # {'ssim': 0.0012, 'psnr': 8.142}
 3. **Fail-Fast Spatial Dimension Policy**: Pairwise metrics (`lpips`, `ssim`, `psnr`) strictly reject mismatched image dimensions with `ValueError` to prevent artificial interpolation distortion. Align sizes beforehand via downsampling or super-resolution.
 4. **SSIM Minimum Size**: SSIM requires both image dimensions to be at least 11 pixels because it uses the documented 11 × 11 Gaussian window. Smaller inputs fail with `ValueError`.
 5. **Dataset Distribution Contract**: Both `fid` and `kid` require existing directories on both sides; passing single files is rejected immediately. Neither metric requires filename stem matching ($N_{\text{ref}} \ne N_{\text{gen}}$ is allowed).
-6. **Sample Size Sensitivity & Unbiasedness**: FID is a biased estimator that overestimates distance on small sample sets ($N < 2048$, triggering a `UserWarning`). KID is an unbiased U-statistic estimator that can produce finite negative values near zero; these values reflect sample variance around zero and must not be truncated. KID defaults to deterministic `seed=0` for bit-exact reproducibility.
-7. **Human Preference Alignment**: PickScore assesses text-image alignment against trained human preference choices from the Pick-a-Pic dataset (`yuvalkirstain/PickScore_v1`). Scores are scaled softmax logits (typically in $[15, 25]$ on real benchmarks) where higher scores indicate stronger human preference. PickScore strictly requires an explicit text prompt (`--prompt`) and evaluates subjective desirability alongside objective fidelity.
+6. **Sample Size Sensitivity & Unbiasedness**: FID is a biased estimator with finite-sample bias that increases significantly on smaller sample sizes (triggering a `UserWarning` reminding users of finite-sample sensitivity). KID is an unbiased U-statistic estimator that can produce small negative values near zero; these reflect normal statistical fluctuations and must not be truncated. KID defaults to deterministic `seed=0` for bit-exact reproducibility.
+7. **Human Preference Alignment**: PickScore assesses text-image alignment against trained human preference choices from the Pick-a-Pic dataset (`yuvalkirstain/PickScore_v1`). Scores are uncalibrated logits where higher scores indicate stronger preference; win rate is evaluated strictly via the sigmoid difference between candidate pairs conditioned on identical prompts. PickScore strictly requires an explicit text prompt (`--prompt`).
 
 ## Release Status
 
