@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
-from PIL import Image
 from torchvision import transforms
 
 
@@ -102,8 +101,8 @@ class SSIMPredictor:
         """Evaluate SSIM similarity between two images.
 
         Args:
-            reference_path: Reference image file path.
-            generated_path: Generated image file path.
+            reference_path: Reference image file path, PIL Image, or Tensor.
+            generated_path: Generated image file path, PIL Image, or Tensor.
 
         Returns:
             float: SSIM score in [-1.0, 1.0] (1.0 for identical images).
@@ -112,31 +111,42 @@ class SSIMPredictor:
             ValueError: If images have mismatched spatial dimensions or if
                 dimensions are smaller than window_size.
         """
-        ref_img = Image.open(reference_path).convert("RGB")
-        gen_img = Image.open(generated_path).convert("RGB")
+        import os
 
-        if ref_img.size != gen_img.size:
+        from image_evaluator._input_adapters import to_torch_tensor
+
+        ref_tensor = to_torch_tensor(reference_path, device=self.device)
+        gen_tensor = to_torch_tensor(generated_path, device=self.device)
+
+        ref_h, ref_w = ref_tensor.shape[-2:]
+        gen_h, gen_w = gen_tensor.shape[-2:]
+
+        if (ref_h, ref_w) != (gen_h, gen_w):
+            ref_name = (
+                str(reference_path)
+                if isinstance(reference_path, (str, os.PathLike))
+                else "<in-memory>"
+            )
+            gen_name = (
+                str(generated_path)
+                if isinstance(generated_path, (str, os.PathLike))
+                else "<in-memory>"
+            )
             raise ValueError(
-                f"Image size mismatch: reference '{reference_path}' has size "
-                f"{ref_img.size} (WxH), but generated '{generated_path}' "
-                f"has size {gen_img.size} (WxH). "
+                f"Image size mismatch: reference '{ref_name}' has size "
+                f"({ref_w}, {ref_h}) (WxH), but generated '{gen_name}' "
+                f"has size ({gen_w}, {gen_h}) (WxH). "
                 "SSIM requires identical spatial dimensions. "
                 "Please align image sizes beforehand (e.g. via high-quality "
                 "downsampling or super-resolution)."
             )
 
-        if (
-            ref_img.width < self.window_size
-            or ref_img.height < self.window_size
-        ):
+        if ref_w < self.window_size or ref_h < self.window_size:
             raise ValueError(
-                f"Image dimensions {ref_img.size} (WxH) are smaller than "
+                f"Image dimensions ({ref_w}, {ref_h}) (WxH) are smaller than "
                 f"SSIM window_size ({self.window_size}x{self.window_size}). "
                 f"Both width and height must be at least {self.window_size}."
             )
-
-        ref_tensor = self.to_tensor(ref_img).unsqueeze(0).to(self.device)
-        gen_tensor = self.to_tensor(gen_img).unsqueeze(0).to(self.device)
 
         with torch.no_grad():
             score = self.compute_ssim_tensor(ref_tensor, gen_tensor)

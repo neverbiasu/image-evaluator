@@ -1,6 +1,5 @@
 import numpy as np
 import torch
-from PIL import Image
 
 
 class LPIPSPredictor:
@@ -29,8 +28,8 @@ class LPIPSPredictor:
         """Evaluate LPIPS perceptual distance between two images.
 
         Args:
-            reference_path: Reference image file path.
-            generated_path: Generated image file path.
+            reference_path: Reference image file path, PIL Image, or Tensor.
+            generated_path: Generated image file path, PIL Image, or Tensor.
 
         Returns:
             float: LPIPS distance score.
@@ -38,34 +37,41 @@ class LPIPSPredictor:
         Raises:
             ValueError: If images have mismatched spatial dimensions.
         """
-        import lpips
+        import os
 
-        ref_img = Image.open(reference_path).convert("RGB")
-        gen_img = Image.open(generated_path).convert("RGB")
+        from image_evaluator._input_adapters import to_torch_tensor
 
-        if ref_img.size != gen_img.size:
+        ref_tensor = to_torch_tensor(reference_path, device=self.device)
+        gen_tensor = to_torch_tensor(generated_path, device=self.device)
+
+        ref_h, ref_w = ref_tensor.shape[-2:]
+        gen_h, gen_w = gen_tensor.shape[-2:]
+
+        if (ref_h, ref_w) != (gen_h, gen_w):
+            ref_name = (
+                str(reference_path)
+                if isinstance(reference_path, (str, os.PathLike))
+                else "<in-memory>"
+            )
+            gen_name = (
+                str(generated_path)
+                if isinstance(generated_path, (str, os.PathLike))
+                else "<in-memory>"
+            )
             raise ValueError(
-                f"Image size mismatch: reference '{reference_path}' has size "
-                f"{ref_img.size} (WxH), but generated '{generated_path}' "
-                f"has size {gen_img.size} (WxH). "
+                f"Image size mismatch: reference '{ref_name}' has size "
+                f"({ref_w}, {ref_h}) (WxH), but generated '{gen_name}' "
+                f"has size ({gen_w}, {gen_h}) (WxH). "
                 "LPIPS requires identical spatial dimensions. "
                 "Please align image sizes beforehand (e.g. via high-quality "
                 "downsampling or super-resolution)."
             )
 
-        ref_tensor = (
-            lpips.im2tensor(np.array(ref_img))
-            .to(self.device)
-            .to(torch.float32)
-        )
-        gen_tensor = (
-            lpips.im2tensor(np.array(gen_img))
-            .to(self.device)
-            .to(torch.float32)
-        )
+        ref_scaled = (2.0 * ref_tensor - 1.0).to(torch.float32)
+        gen_scaled = (2.0 * gen_tensor - 1.0).to(torch.float32)
 
         with torch.no_grad():
-            dist = self.loss_fn(ref_tensor, gen_tensor)
+            dist = self.loss_fn(ref_scaled, gen_scaled)
         return float(dist.item())
 
     def evaluate_folder_lpips(self, reference_folder, generated_folder):
