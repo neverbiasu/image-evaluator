@@ -39,19 +39,16 @@ def _validate_runtime_inputs(
     selected_pairwise = selected_metrics & pairwise_metrics
 
     if is_folder:
-        if selected_pairwise:
-            if (
+        if (
+            selected_pairwise
+            and (
                 parsed_args.reference is None
                 or not os.path.exists(parsed_args.reference)
-            ):
-                raise CLIInputError(
-                    f"Reference path does not exist: '{parsed_args.reference}'"
-                )
-            if not os.path.isdir(parsed_args.reference):
-                raise CLIInputError(
-                    f"Reference path is not a directory: "
-                    f"'{parsed_args.reference}'"
-                )
+            )
+        ):
+            raise CLIInputError(
+                f"Reference path does not exist: '{parsed_args.reference}'"
+            )
     else:
         if not os.path.isfile(parsed_args.image):
             raise CLIInputError(

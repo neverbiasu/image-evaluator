@@ -831,6 +831,92 @@ def test_process_parity_for_preflight_errors(
     assert "Traceback" not in proc.stderr
 
 
+@pytest.mark.parametrize(
+    "case_id,args_builder,expected_needle",
+    [
+        (
+            "ERR-03",
+            lambda s: [
+                "--metrics",
+                "clip",
+                "--image",
+                str(s["img_64"]),
+            ],
+            "--prompt is required when 'clip' metric is selected",
+        ),
+        (
+            "ERR-04",
+            lambda s: [
+                "--metrics",
+                "ssim",
+                "--image",
+                str(s["img_64"]),
+            ],
+            "--reference is required when 'ssim' metric is selected",
+        ),
+        (
+            "ERR-05-fid",
+            lambda s: [
+                "--metrics",
+                "fid",
+                "--image",
+                str(s["img_64"]),
+                "--reference",
+                str(s["ref_dir"]),
+            ],
+            "--image must be a directory when 'fid' metric is selected",
+        ),
+        (
+            "ERR-05-kid",
+            lambda s: [
+                "--metrics",
+                "kid",
+                "--image",
+                str(s["img_dir"]),
+                "--reference",
+                str(s["ref_64"]),
+            ],
+            "--reference must be a directory when 'kid' metric is selected",
+        ),
+        (
+            "ERR-08",
+            lambda s: [
+                "--metrics",
+                "ssim",
+                "--image",
+                str(s["img_64"]),
+                "--reference",
+                str(s["ref_64"]),
+                "--format",
+                "xml",
+            ],
+            "invalid choice: 'xml'",
+        ),
+    ],
+)
+def test_process_parity_for_argparse_errors(
+    case_id, args_builder, expected_needle, sample_images
+):
+    """Verify OS subprocess execution for exit code 2 argparse errors."""
+    args = args_builder(sample_images)
+
+    cmd = [sys.executable, "-m", "image_evaluator.main", *args]
+    proc = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=dict(os.environ, PYTHONPATH="."),
+    )
+
+    assert proc.returncode == 2
+    assert proc.stdout == ""
+    assert expected_needle in proc.stderr
+    assert "usage:" in proc.stderr
+    assert "Traceback (most recent call last)" not in proc.stderr
+    assert "Traceback" not in proc.stderr
+
+
 # -------------------------------------------------------------------------
 # JSON Success Regression
 # -------------------------------------------------------------------------
