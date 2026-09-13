@@ -30,6 +30,10 @@ _EXPORTS = {
         "image_evaluator.arcface_dist_predictor",
         "ArcFaceDistPredictor",
     ),
+    "DirectionalClipPredictor": (
+        "image_evaluator.directional_clip_predictor",
+        "DirectionalClipPredictor",
+    ),
 }
 
 __all__ = ["__version__", *list(_EXPORTS.keys())]
