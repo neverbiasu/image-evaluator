@@ -6,6 +6,7 @@ DESIGN.md Section 5.
 """
 
 import json
+import os
 import subprocess
 import sys
 from unittest.mock import MagicMock, patch
@@ -659,6 +660,7 @@ with patch("image_evaluator.ssim_predictor.SSIMPredictor") as mock_cls:
         capture_output=True,
         text=True,
         check=False,
+        env=dict(os.environ, PYTHONPATH="."),
     )
 
     assert proc.returncode == 1
@@ -806,7 +808,13 @@ def test_process_parity_for_preflight_errors(
 
     # 2. Separate OS subprocess invocation
     cmd = [sys.executable, "-m", "image_evaluator.main", *args]
-    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    proc = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=dict(os.environ, PYTHONPATH="."),
+    )
 
     # Assert identical exit code
     assert proc.returncode == 1
@@ -871,7 +879,13 @@ def test_json_success_regression_subprocess(sample_images):
         "--format",
         "json",
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    proc = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=dict(os.environ, PYTHONPATH="."),
+    )
 
     assert proc.returncode == 0
     data = json.loads(proc.stdout)

@@ -39,10 +39,6 @@ def _validate_runtime_inputs(
     selected_pairwise = selected_metrics & pairwise_metrics
 
     if is_folder:
-        if not os.path.isdir(parsed_args.image):
-            raise CLIInputError(
-                f"Image path is not a directory: '{parsed_args.image}'"
-            )
         if selected_pairwise:
             if (
                 parsed_args.reference is None
