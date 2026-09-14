@@ -80,6 +80,22 @@ def _validate_runtime_inputs(
                     f"require identical dimensions."
                 )
 
+        if "directional_clip" in selected_metrics:
+            if (
+                parsed_args.reference is None
+                or not os.path.exists(parsed_args.reference)
+            ):
+                raise CLIInputError(
+                    f"Reference path does not exist: '{parsed_args.reference}'"
+                )
+            if not os.path.isfile(parsed_args.reference):
+                raise CLIInputError(
+                    f"Reference path is not a regular file: "
+                    f"'{parsed_args.reference}'"
+                )
+            _verify_image_file(parsed_args.reference)
+
+
 
 def _normalize_json_values(obj: Any) -> Any:
     """Recursively convert non-finite float values (NaN, Inf, -Inf) to None.
@@ -175,7 +191,7 @@ def main(args=None):
     selected_metrics = set(parsed_args.metrics)
 
     # Validate dependent and prohibited options
-    prompt_metrics = {"clip", "pickscore"}
+    prompt_metrics = {"clip", "pickscore", "directional_clip"}
     selected_prompt = selected_metrics & prompt_metrics
     if selected_prompt:
         if parsed_args.prompt is None or not parsed_args.prompt.strip():
@@ -194,7 +210,7 @@ def main(args=None):
         )
 
     pairwise_metrics = {"arcface", "lpips", "ssim", "psnr"}
-    reference_metrics = pairwise_metrics | {"fid", "kid"}
+    reference_metrics = pairwise_metrics | {"fid", "kid", "directional_clip"}
     selected_reference = selected_metrics & reference_metrics
     selected_pairwise = selected_metrics & pairwise_metrics
     if selected_reference:
@@ -253,22 +269,6 @@ def main(args=None):
 
     if "directional_clip" in selected_metrics:
         if (
-            parsed_args.reference is None
-            or not parsed_args.reference.strip()
-        ):
-            parser.error(
-                "--reference is required when 'directional_clip' "
-                "metric is selected (pass the source image path)."
-            )
-        if (
-            parsed_args.prompt is None
-            or not parsed_args.prompt.strip()
-        ):
-            parser.error(
-                "--prompt is required when 'directional_clip' "
-                "metric is selected (pass the target/edit prompt)."
-            )
-        if (
             parsed_args.prompt_src is None
             or not parsed_args.prompt_src.strip()
         ):
@@ -281,6 +281,7 @@ def main(args=None):
             "--prompt-src was provided but 'directional_clip' "
             "metric was not selected."
         )
+
 
     _validate_runtime_inputs(parsed_args, selected_metrics)
 
