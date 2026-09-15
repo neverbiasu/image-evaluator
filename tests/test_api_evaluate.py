@@ -15,7 +15,7 @@ from image_evaluator import (
 
 def test_package_exports_and_version():
     """Verify package version, exports, and lazy loading."""
-    assert image_evaluator.__version__ == "0.3.0"
+    assert image_evaluator.__version__ == "0.4.0"
     for name in [
         "evaluate",
         "SSIMPredictor",
@@ -27,9 +27,11 @@ def test_package_exports_and_version():
         "FIDPredictor",
         "KIDPredictor",
         "ArcFaceDistPredictor",
+        "DirectionalClipPredictor",
     ]:
         assert hasattr(image_evaluator, name)
         assert name in dir(image_evaluator)
+
 
     with pytest.raises(
         AttributeError, match="has no attribute 'unknown_symbol'"

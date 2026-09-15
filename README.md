@@ -1,6 +1,6 @@
 # image-evaluator
 
-`image-evaluator` is a lightweight CLI utility for generative AI practitioners and researchers. It evaluates nine core quality dimensions of synthetic images: predicted visual aesthetics, text-to-image semantic alignment, facial identity preservation, pairwise image fidelity (deep perceptual distance LPIPS, structural similarity SSIM, and peak signal-to-noise ratio PSNR), dataset distribution fidelity (Fréchet Inception Distance FID and Kernel Inception Distance KID), and human preference alignment (PickScore).
+`image-evaluator` is a lightweight CLI utility for generative AI practitioners and researchers. It evaluates ten core quality dimensions of synthetic images: predicted visual aesthetics, text-to-image semantic alignment, image editing directional change (Directional CLIP), facial identity preservation, pairwise image fidelity (deep perceptual distance LPIPS, structural similarity SSIM, and peak signal-to-noise ratio PSNR), dataset distribution fidelity (Fréchet Inception Distance FID and Kernel Inception Distance KID), and human preference alignment (PickScore).
 
 ## Evaluation Workflow
 
@@ -9,6 +9,7 @@ flowchart LR
     A[Task Goal] --> B{Choose --metrics}
     B -->|aesthetic| C[LAION Aesthetic]
     B -->|clip| D[CLIP Similarity]
+    B -->|directional_clip| U[Directional CLIP]
     B -->|arcface| E[ArcFace Distance]
     B -->|lpips| F[LPIPS Distance]
     B -->|ssim| G[SSIM Similarity]
@@ -18,6 +19,7 @@ flowchart LR
     B -->|pickscore| S[PickScore Preference]
     C --> I[Float, Higher Better]
     D --> J[Cosine Sim, Higher Better]
+    U --> V[Directional Sim, Higher Better]
     E --> K[Cosine Dist, Lower Better]
     F --> L[Distance, Lower Better]
     G --> M[Index, Higher Better]
@@ -33,6 +35,7 @@ flowchart LR
 | :--- | :--- | :--- | :--- | :--- |
 | Visual appeal & quality | `aesthetic` | `--image` | Higher is better | [docs/aesthetic-score.md](docs/aesthetic-score.md) |
 | Prompt semantic match | `clip` | `--image`, `--prompt` | Higher is better | [docs/clip-similarity.md](docs/clip-similarity.md) |
+| Image editing direction | `directional_clip` | `--image`, `--reference`, `--prompt`, `--prompt-src` | Higher is better | [docs/directional-clip.md](docs/directional-clip.md) |
 | Facial identity consistency | `arcface` | `--image`, `--reference` | Lower is better | [docs/arcface-distance.md](docs/arcface-distance.md) |
 | Deep perceptual similarity | `lpips` | `--image`, `--reference` | Lower is better | [docs/pairwise-fidelity.md](docs/pairwise-fidelity.md) |
 | Structural degradation | `ssim` | `--image`, `--reference` | Higher is better | [docs/pairwise-fidelity.md](docs/pairwise-fidelity.md) |
@@ -48,7 +51,7 @@ flowchart LR
 `image-evaluator` requires Python 3.11–3.14. Install the release via pip:
 
 ```bash
-python -m pip install image-evaluator==0.3.0
+python -m pip install image-evaluator==0.4.0
 ```
 
 The supported runtime path is macOS or Linux with CPU ONNX Runtime. Linux
