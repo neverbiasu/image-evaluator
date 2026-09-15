@@ -5,7 +5,7 @@ image generation evaluation toolkit.
 import importlib
 from typing import Any
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 _EXPORTS = {
     "evaluate": ("image_evaluator.core", "evaluate"),
@@ -29,6 +29,10 @@ _EXPORTS = {
     "ArcFaceDistPredictor": (
         "image_evaluator.arcface_dist_predictor",
         "ArcFaceDistPredictor",
+    ),
+    "DirectionalClipPredictor": (
+        "image_evaluator.directional_clip_predictor",
+        "DirectionalClipPredictor",
     ),
 }
 

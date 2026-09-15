@@ -28,6 +28,13 @@ import pytest
 
 from image_evaluator.main import main
 
+# 1x1 valid PNG byte payload for mock fixtures
+_VALID_PNG_BYTES = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+    b"\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc```\x00\x00"
+    b"\x00\x04\x00\x01\xf6\x178U\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
 
 @pytest.fixture
 def mock_predictors():
@@ -268,6 +275,7 @@ def mock_predictors():
     ],
 )
 def test_unselected_predictor_modules_are_not_imported(
+    tmp_path,
     metric,
     module_name,
     class_name,
@@ -276,6 +284,16 @@ def test_unselected_predictor_modules_are_not_imported(
     method_name,
 ):
     """Verify each CLI path imports only its selected predictor module."""
+    img_file = tmp_path / "image.png"
+    img_file.write_bytes(_VALID_PNG_BYTES)
+    ref_file = tmp_path / "reference.png"
+    ref_file.write_bytes(_VALID_PNG_BYTES)
+
+    resolved_extra_args = [
+        str(ref_file) if arg == "reference.png" else arg
+        for arg in extra_args
+    ]
+
     code = f"""
 import sys
 import types
@@ -290,7 +308,11 @@ sys.modules[{module_name!r}] = fake_module
 from image_evaluator.main import main
 
 main([
-    "--metrics", {metric!r}, "--image", "image.png", *{extra_args!r}
+    "--metrics",
+    {metric!r},
+    "--image",
+    {str(img_file)!r},
+    *{resolved_extra_args!r},
 ])
 assert fake_class.call_count == 1
 for blocked_module in {blocked_modules!r}:
@@ -386,7 +408,7 @@ def test_arcface_rejects_empty_or_whitespace_reference(empty_ref):
 def test_arcface_rejects_mixed_dir_and_file(mock_predictors, tmp_path):
     """Verify mixed file/directory inputs for arcface fail before init."""
     img_file = tmp_path / "img.png"
-    img_file.write_text("dummy")
+    img_file.write_bytes(_VALID_PNG_BYTES)
     ref_dir = tmp_path / "ref_dir"
     ref_dir.mkdir()
 
@@ -408,7 +430,7 @@ def test_arcface_rejects_mixed_dir_and_file(mock_predictors, tmp_path):
     img_dir = tmp_path / "img_dir"
     img_dir.mkdir()
     ref_file = tmp_path / "ref.png"
-    ref_file.write_text("dummy")
+    ref_file.write_bytes(_VALID_PNG_BYTES)
 
     with pytest.raises(SystemExit):
         main(
@@ -442,7 +464,7 @@ def test_reference_without_arcface_rejected():
 def test_selective_execution_aesthetic_only(mock_predictors, tmp_path):
     """Verify only aesthetic predictor is initialized and output."""
     img_file = tmp_path / "sample.png"
-    img_file.write_text("dummy")
+    img_file.write_bytes(_VALID_PNG_BYTES)
 
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
@@ -476,7 +498,7 @@ def test_selective_execution_aesthetic_folder(mock_predictors, tmp_path):
 def test_selective_execution_clip_only(mock_predictors, tmp_path):
     """Verify only clip predictor is initialized and output."""
     img_file = tmp_path / "sample.png"
-    img_file.write_text("dummy")
+    img_file.write_bytes(_VALID_PNG_BYTES)
 
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
@@ -504,9 +526,9 @@ def test_selective_execution_clip_only(mock_predictors, tmp_path):
 def test_selective_execution_arcface_only(mock_predictors, tmp_path):
     """Verify only arcface predictor is initialized and output."""
     img_file = tmp_path / "sample.png"
-    img_file.write_text("dummy")
+    img_file.write_bytes(_VALID_PNG_BYTES)
     ref_file = tmp_path / "ref.png"
-    ref_file.write_text("dummy ref")
+    ref_file.write_bytes(_VALID_PNG_BYTES)
 
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
@@ -560,9 +582,9 @@ def test_selective_execution_arcface_folder(mock_predictors, tmp_path):
 def test_multi_metric_execution(mock_predictors, tmp_path):
     """Verify multi-metric selection initializes all specified predictors."""
     img_file = tmp_path / "sample.png"
-    img_file.write_text("dummy")
+    img_file.write_bytes(_VALID_PNG_BYTES)
     ref_file = tmp_path / "ref.png"
-    ref_file.write_text("dummy ref")
+    ref_file.write_bytes(_VALID_PNG_BYTES)
 
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
@@ -616,7 +638,7 @@ def test_lpips_rejects_empty_or_whitespace_reference(empty_ref):
 def test_lpips_rejects_mixed_dir_and_file(mock_predictors, tmp_path):
     """Verify mixed file/directory inputs for lpips fail before init."""
     img_file = tmp_path / "img.png"
-    img_file.write_text("dummy")
+    img_file.write_bytes(_VALID_PNG_BYTES)
     ref_dir = tmp_path / "ref_dir"
     ref_dir.mkdir()
 
@@ -637,9 +659,9 @@ def test_lpips_rejects_mixed_dir_and_file(mock_predictors, tmp_path):
 def test_selective_execution_lpips_only(mock_predictors, tmp_path):
     """Verify only lpips predictor is initialized and output."""
     img_file = tmp_path / "sample.png"
-    img_file.write_text("dummy")
+    img_file.write_bytes(_VALID_PNG_BYTES)
     ref_file = tmp_path / "ref.png"
-    ref_file.write_text("dummy ref")
+    ref_file.write_bytes(_VALID_PNG_BYTES)
 
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
@@ -695,9 +717,9 @@ def test_selective_execution_lpips_folder(mock_predictors, tmp_path):
 def test_multi_metric_execution_with_lpips(mock_predictors, tmp_path):
     """Verify multi-metric execution with all 4 metrics."""
     img_file = tmp_path / "sample.png"
-    img_file.write_text("dummy")
+    img_file.write_bytes(_VALID_PNG_BYTES)
     ref_file = tmp_path / "ref.png"
-    ref_file.write_text("dummy ref")
+    ref_file.write_bytes(_VALID_PNG_BYTES)
 
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
@@ -732,7 +754,7 @@ def test_multi_metric_execution_with_lpips(mock_predictors, tmp_path):
 def test_ssim_requires_reference(mock_predictors, tmp_path):
     """Verify ssim metric fails if --reference is omitted."""
     img_file = tmp_path / "sample.png"
-    img_file.write_text("dummy")
+    img_file.write_bytes(_VALID_PNG_BYTES)
 
     with pytest.raises(SystemExit):
         main(["--metrics", "ssim", "--image", str(img_file)])
@@ -744,7 +766,7 @@ def test_ssim_rejects_empty_or_whitespace_reference(
 ):
     """Verify ssim rejects empty or whitespace-only reference argument."""
     img_file = tmp_path / "sample.png"
-    img_file.write_text("dummy")
+    img_file.write_bytes(_VALID_PNG_BYTES)
 
     with pytest.raises(SystemExit):
         main(
@@ -765,7 +787,7 @@ def test_ssim_rejects_mixed_dir_and_file(mock_predictors, tmp_path):
     img_dir = tmp_path / "images"
     img_dir.mkdir()
     ref_file = tmp_path / "ref.png"
-    ref_file.write_text("dummy")
+    ref_file.write_bytes(_VALID_PNG_BYTES)
 
     with pytest.raises(SystemExit):
         main(
@@ -781,7 +803,7 @@ def test_ssim_rejects_mixed_dir_and_file(mock_predictors, tmp_path):
     assert not mock_predictors["ssim_cls"].called
 
     img_file = tmp_path / "image.png"
-    img_file.write_text("dummy")
+    img_file.write_bytes(_VALID_PNG_BYTES)
     ref_dir = tmp_path / "refs"
     ref_dir.mkdir()
 
@@ -802,9 +824,9 @@ def test_ssim_rejects_mixed_dir_and_file(mock_predictors, tmp_path):
 def test_selective_execution_ssim_only(mock_predictors, tmp_path):
     """Verify only ssim predictor is initialized and output."""
     img_file = tmp_path / "sample.png"
-    img_file.write_text("dummy")
+    img_file.write_bytes(_VALID_PNG_BYTES)
     ref_file = tmp_path / "ref.png"
-    ref_file.write_text("dummy ref")
+    ref_file.write_bytes(_VALID_PNG_BYTES)
 
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
@@ -934,9 +956,9 @@ def test_ssim_cli_subprocess_exits_nonzero_for_small_image(tmp_path):
 def test_multi_metric_execution_all_5_metrics(mock_predictors, tmp_path):
     """Verify multi-metric execution with all 5 metrics."""
     img_file = tmp_path / "sample.png"
-    img_file.write_text("dummy")
+    img_file.write_bytes(_VALID_PNG_BYTES)
     ref_file = tmp_path / "ref.png"
-    ref_file.write_text("dummy ref")
+    ref_file.write_bytes(_VALID_PNG_BYTES)
 
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
@@ -974,7 +996,7 @@ def test_multi_metric_execution_all_5_metrics(mock_predictors, tmp_path):
 def test_psnr_requires_reference(mock_predictors, tmp_path):
     """Verify psnr metric fails if --reference is omitted."""
     img_file = tmp_path / "sample.png"
-    img_file.write_text("dummy")
+    img_file.write_bytes(_VALID_PNG_BYTES)
 
     with pytest.raises(SystemExit):
         main(["--metrics", "psnr", "--image", str(img_file)])
@@ -986,7 +1008,7 @@ def test_psnr_rejects_empty_or_whitespace_reference(
 ):
     """Verify psnr rejects empty or whitespace-only reference argument."""
     img_file = tmp_path / "sample.png"
-    img_file.write_text("dummy")
+    img_file.write_bytes(_VALID_PNG_BYTES)
 
     with pytest.raises(SystemExit):
         main(
@@ -1007,7 +1029,7 @@ def test_psnr_rejects_mixed_dir_and_file(mock_predictors, tmp_path):
     img_dir = tmp_path / "images"
     img_dir.mkdir()
     ref_file = tmp_path / "ref.png"
-    ref_file.write_text("dummy")
+    ref_file.write_bytes(_VALID_PNG_BYTES)
 
     with pytest.raises(SystemExit):
         main(
@@ -1023,7 +1045,7 @@ def test_psnr_rejects_mixed_dir_and_file(mock_predictors, tmp_path):
     assert not mock_predictors["psnr_cls"].called
 
     img_file = tmp_path / "image.png"
-    img_file.write_text("dummy")
+    img_file.write_bytes(_VALID_PNG_BYTES)
     ref_dir = tmp_path / "refs"
     ref_dir.mkdir()
 
@@ -1044,9 +1066,9 @@ def test_psnr_rejects_mixed_dir_and_file(mock_predictors, tmp_path):
 def test_selective_execution_psnr_only(mock_predictors, tmp_path):
     """Verify only psnr predictor is initialized and output."""
     img_file = tmp_path / "sample.png"
-    img_file.write_text("dummy")
+    img_file.write_bytes(_VALID_PNG_BYTES)
     ref_file = tmp_path / "ref.png"
-    ref_file.write_text("dummy ref")
+    ref_file.write_bytes(_VALID_PNG_BYTES)
 
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
@@ -1106,9 +1128,9 @@ def test_selective_execution_psnr_folder(mock_predictors, tmp_path):
 def test_multi_metric_execution_all_6_metrics(mock_predictors, tmp_path):
     """Verify multi-metric execution with all 6 metrics."""
     img_file = tmp_path / "sample.png"
-    img_file.write_text("dummy")
+    img_file.write_bytes(_VALID_PNG_BYTES)
     ref_file = tmp_path / "ref.png"
-    ref_file.write_text("dummy ref")
+    ref_file.write_bytes(_VALID_PNG_BYTES)
 
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
@@ -1212,7 +1234,7 @@ def test_fid_rejects_non_existent_image_path(
 def test_fid_rejects_image_file(mock_predictors, tmp_path, capsys):
     """Verify fid rejects file for --image argument."""
     img_file = tmp_path / "image.png"
-    img_file.write_text("dummy")
+    img_file.write_bytes(_VALID_PNG_BYTES)
     ref_dir = tmp_path / "refs"
     ref_dir.mkdir()
 
@@ -1268,7 +1290,7 @@ def test_fid_rejects_reference_file(mock_predictors, tmp_path, capsys):
     img_dir = tmp_path / "images"
     img_dir.mkdir()
     ref_file = tmp_path / "ref.png"
-    ref_file.write_text("dummy")
+    ref_file.write_bytes(_VALID_PNG_BYTES)
 
     with pytest.raises(SystemExit):
         main(
@@ -1574,7 +1596,7 @@ def test_kid_rejects_non_existent_image_path(
 def test_kid_rejects_image_file(mock_predictors, tmp_path, capsys):
     """Verify kid rejects file for --image argument."""
     img_file = tmp_path / "image.png"
-    img_file.write_text("dummy")
+    img_file.write_bytes(_VALID_PNG_BYTES)
     ref_dir = tmp_path / "refs"
     ref_dir.mkdir()
 
@@ -1630,7 +1652,7 @@ def test_kid_rejects_reference_file(mock_predictors, tmp_path, capsys):
     img_dir = tmp_path / "images"
     img_dir.mkdir()
     ref_file = tmp_path / "ref.png"
-    ref_file.write_text("dummy")
+    ref_file.write_bytes(_VALID_PNG_BYTES)
 
     with pytest.raises(SystemExit):
         main(
@@ -1940,7 +1962,7 @@ def test_pickscore_rejects_empty_or_whitespace_prompt(empty_prompt):
 def test_pickscore_single_image_execution(mock_predictors, tmp_path, capsys):
     """Verify single image pickscore evaluation via CLI."""
     img_file = tmp_path / "gen.png"
-    img_file.write_text("dummy")
+    img_file.write_bytes(_VALID_PNG_BYTES)
 
     main(
         [
@@ -1988,7 +2010,7 @@ def test_multi_metric_clip_aesthetic_pickscore(
 ):
     """Verify multi-metric run with aesthetic, clip, and pickscore."""
     img_file = tmp_path / "gen.png"
-    img_file.write_text("dummy")
+    img_file.write_bytes(_VALID_PNG_BYTES)
 
     main(
         [
@@ -2102,7 +2124,7 @@ def test_multi_metric_all_9_metrics_execution(
 def test_pickscore_isolated_subprocess_lazy_loading(tmp_path):
     """Verify pickscore path imports only PickScorePredictor."""
     img_file = tmp_path / "image.png"
-    img_file.write_text("dummy")
+    img_file.write_bytes(_VALID_PNG_BYTES)
 
     code = f"""
 import sys

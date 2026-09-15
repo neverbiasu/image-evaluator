@@ -7,6 +7,94 @@ import sys
 from typing import Any
 
 import numpy as np
+from PIL import Image
+
+
+class CLIInputError(ValueError):
+    """Raised when expected CLI runtime inputs are invalid or missing."""
+
+
+def _verify_image_file(path: str) -> tuple[int, int]:
+    try:
+        with Image.open(path) as img:
+            size = img.size
+            img.verify()
+            return size
+    except Exception as exc:
+        raise CLIInputError(
+            f"Cannot identify or decode image file '{path}': {exc}"
+        ) from exc
+
+
+def _validate_runtime_inputs(
+    parsed_args: argparse.Namespace, selected_metrics: set[str]
+) -> None:
+    if not os.path.exists(parsed_args.image):
+        raise CLIInputError(
+            f"Image path does not exist: '{parsed_args.image}'"
+        )
+
+    is_folder = os.path.isdir(parsed_args.image)
+    pairwise_metrics = {"arcface", "lpips", "ssim", "psnr"}
+    selected_pairwise = selected_metrics & pairwise_metrics
+
+    if is_folder:
+        if (
+            selected_pairwise
+            and (
+                parsed_args.reference is None
+                or not os.path.exists(parsed_args.reference)
+            )
+        ):
+            raise CLIInputError(
+                f"Reference path does not exist: '{parsed_args.reference}'"
+            )
+    else:
+        if not os.path.isfile(parsed_args.image):
+            raise CLIInputError(
+                f"Image path is not a regular file: '{parsed_args.image}'"
+            )
+        img_size = _verify_image_file(parsed_args.image)
+
+        if selected_pairwise:
+            if (
+                parsed_args.reference is None
+                or not os.path.exists(parsed_args.reference)
+            ):
+                raise CLIInputError(
+                    f"Reference path does not exist: '{parsed_args.reference}'"
+                )
+            if not os.path.isfile(parsed_args.reference):
+                raise CLIInputError(
+                    f"Reference path is not a regular file: "
+                    f"'{parsed_args.reference}'"
+                )
+            ref_size = _verify_image_file(parsed_args.reference)
+
+            sensitive_metrics = selected_pairwise & {"lpips", "ssim", "psnr"}
+            if sensitive_metrics and img_size != ref_size:
+                raise CLIInputError(
+                    f"Image size mismatch: reference has size {ref_size}, "
+                    f"generated image has size {img_size}. "
+                    f"Metrics {sorted(sensitive_metrics)} "
+                    f"require identical dimensions."
+                )
+
+        if "directional_clip" in selected_metrics:
+            if (
+                parsed_args.reference is None
+                or not os.path.exists(parsed_args.reference)
+            ):
+                raise CLIInputError(
+                    f"Reference path does not exist: '{parsed_args.reference}'"
+                )
+            if not os.path.isfile(parsed_args.reference):
+                raise CLIInputError(
+                    f"Reference path is not a regular file: "
+                    f"'{parsed_args.reference}'"
+                )
+            _verify_image_file(parsed_args.reference)
+
 
 
 def _normalize_json_values(obj: Any) -> Any:
@@ -52,6 +140,7 @@ def main(args=None):
             "fid",
             "kid",
             "pickscore",
+            "directional_clip",
         ],
         required=True,
         help="Metrics to evaluate",
@@ -87,12 +176,22 @@ def main(args=None):
         default="text",
         help="Output format: 'text' (default) or 'json'",
     )
+    parser.add_argument(
+        "--prompt-src",
+        type=str,
+        default=None,
+        dest="prompt_src",
+        help=(
+            "Source prompt for 'directional_clip' metric. "
+            "Describes the original image before editing."
+        ),
+    )
     parsed_args = parser.parse_args(args)
 
     selected_metrics = set(parsed_args.metrics)
 
     # Validate dependent and prohibited options
-    prompt_metrics = {"clip", "pickscore"}
+    prompt_metrics = {"clip", "pickscore", "directional_clip"}
     selected_prompt = selected_metrics & prompt_metrics
     if selected_prompt:
         if parsed_args.prompt is None or not parsed_args.prompt.strip():
@@ -111,7 +210,7 @@ def main(args=None):
         )
 
     pairwise_metrics = {"arcface", "lpips", "ssim", "psnr"}
-    reference_metrics = pairwise_metrics | {"fid", "kid"}
+    reference_metrics = pairwise_metrics | {"fid", "kid", "directional_clip"}
     selected_reference = selected_metrics & reference_metrics
     selected_pairwise = selected_metrics & pairwise_metrics
     if selected_reference:
@@ -167,6 +266,25 @@ def main(args=None):
             "--reference was provided but no reference-based metric "
             "was selected."
         )
+
+    if "directional_clip" in selected_metrics:
+        if (
+            parsed_args.prompt_src is None
+            or not parsed_args.prompt_src.strip()
+        ):
+            parser.error(
+                "--prompt-src is required when 'directional_clip' "
+                "metric is selected (pass the source prompt)."
+            )
+    elif parsed_args.prompt_src is not None:
+        parser.error(
+            "--prompt-src was provided but 'directional_clip' "
+            "metric was not selected."
+        )
+
+
+    _validate_runtime_inputs(parsed_args, selected_metrics)
+
 
     is_folder = os.path.isdir(parsed_args.image)
     results = {
@@ -359,6 +477,23 @@ def main(args=None):
             if parsed_args.format == "text":
                 print(f"PickScore: {pickscore_score}")
 
+        # Directional CLIP Evaluation
+        if "directional_clip" in selected_metrics:
+            from image_evaluator.directional_clip_predictor import (
+                DirectionalClipPredictor,
+            )
+
+            dir_clip_predictor = DirectionalClipPredictor()
+            dir_clip_score = dir_clip_predictor.evaluate_directional_clip(
+                image_src=parsed_args.reference,
+                image_edit=parsed_args.image,
+                prompt_src=parsed_args.prompt_src,
+                prompt_target=parsed_args.prompt,
+            )
+            results["metrics"]["directional_clip"] = dir_clip_score
+            if parsed_args.format == "text":
+                print(f"Directional CLIP: {dir_clip_score}")
+
     if parsed_args.format == "json":
         with contextlib.redirect_stdout(sys.stderr):
             _execute_metrics()
@@ -370,5 +505,14 @@ def main(args=None):
     return results
 
 
+def cli(args=None) -> int:
+    try:
+        main(args)
+    except CLIInputError as exc:
+        print(f"image-evaluator: error: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
 if __name__ == "__main__":
-    main()
+    raise SystemExit(cli())

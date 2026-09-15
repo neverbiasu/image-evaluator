@@ -31,7 +31,7 @@ While FID assumes that deep feature representations follow a single multivariate
 1. **Non-parametric Kernel MMD**: KID does not assume Gaussianity. The polynomial kernel implicitly captures higher-order moments of the distribution, making it sensitive to multimodality and fine-grained distribution shifts.
 2. **Unbiased Finite-Sample Estimation**: FID has significant finite-sample bias: $\mathbb{E}[\widehat{\text{FID}}] > \text{FID}^*$ when $N < 50,000$. In contrast, the U-statistic estimator $\text{MMD}_u^2$ is **unbiased for any sample size** $m \ge 2$:
    $$\mathbb{E}\left[\text{MMD}_u^2(X, Y)\right] = \text{MMD}^2(P_r, P_g)$$
-   This property makes KID vastly more statistically reliable than FID on smaller datasets ($N < 2,048$).
+   While KID eliminates finite-sample bias for any $m \ge 2$, note that sampling variance remains non-negligible at smaller sample counts.
 
 ### Why `clean-fid`?
 
