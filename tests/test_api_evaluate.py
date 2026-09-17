@@ -15,7 +15,7 @@ from image_evaluator import (
 
 def test_package_exports_and_version():
     """Verify package version, exports, and lazy loading."""
-    assert image_evaluator.__version__ == "0.4.0"
+    assert image_evaluator.__version__ == "0.5.0"
     for name in [
         "evaluate",
         "SSIMPredictor",
@@ -444,3 +444,267 @@ def test_evaluate_device_propagation(tmp_path):
         mock_aes.assert_called_once_with(
             model_name="vit_l_14", device="cpu"
         )
+
+
+def test_evaluate_directional_clip_in_memory_pil():
+    """Verify evaluate() runs directional_clip with in-memory PIL images."""
+    img_src = Image.new("RGB", (64, 64), color=(100, 100, 100))
+    img_edit = Image.new("RGB", (64, 64), color=(200, 200, 200))
+
+    with (
+        patch(
+            "image_evaluator.directional_clip_predictor."
+            "AutoModel.from_pretrained"
+        ) as mock_model_cls,
+        patch(
+            "image_evaluator.directional_clip_predictor."
+            "AutoProcessor.from_pretrained"
+        ) as mock_proc_cls,
+        patch(
+            "image_evaluator.directional_clip_predictor."
+            "AutoTokenizer.from_pretrained"
+        ) as mock_tok_cls,
+    ):
+        mock_model = MagicMock()
+        mock_model.to.return_value = mock_model
+        feat = torch.tensor([[1.0, 0.0, 0.0, 0.0]])
+        mock_model.get_image_features.return_value = feat
+        mock_model.get_text_features.return_value = feat
+        mock_model_cls.return_value = mock_model
+
+        mock_proc = MagicMock()
+        mock_proc.return_value = {"pixel_values": torch.zeros(1, 3, 224, 224)}
+        mock_proc_cls.return_value = mock_proc
+
+        mock_tok = MagicMock()
+        mock_tok.return_value = {"input_ids": torch.zeros(1, 10)}
+        mock_tok_cls.return_value = mock_tok
+
+        res = evaluate(
+            metrics="directional_clip",
+            image=img_edit,
+            reference=img_src,
+            prompt="a white square",
+            source_prompt="a gray square",
+            device="cpu",
+        )
+        assert "directional_clip" in res
+        assert isinstance(res["directional_clip"], float)
+
+
+def test_evaluate_directional_clip_in_memory_tensor():
+    """Verify evaluate() runs directional_clip with in-memory tensors."""
+    t_src = torch.zeros(3, 32, 32)
+    t_edit = torch.ones(3, 32, 32)
+
+    with (
+        patch(
+            "image_evaluator.directional_clip_predictor."
+            "AutoModel.from_pretrained"
+        ) as mock_model_cls,
+        patch(
+            "image_evaluator.directional_clip_predictor."
+            "AutoProcessor.from_pretrained"
+        ) as mock_proc_cls,
+        patch(
+            "image_evaluator.directional_clip_predictor."
+            "AutoTokenizer.from_pretrained"
+        ) as mock_tok_cls,
+    ):
+        mock_model = MagicMock()
+        mock_model.to.return_value = mock_model
+        feat = torch.tensor([[1.0, 0.0, 0.0, 0.0]])
+        mock_model.get_image_features.return_value = feat
+        mock_model.get_text_features.return_value = feat
+        mock_model_cls.return_value = mock_model
+
+        mock_proc = MagicMock()
+        mock_proc.return_value = {"pixel_values": torch.zeros(1, 3, 224, 224)}
+        mock_proc_cls.return_value = mock_proc
+
+        mock_tok = MagicMock()
+        mock_tok.return_value = {"input_ids": torch.zeros(1, 10)}
+        mock_tok_cls.return_value = mock_tok
+
+        res = evaluate(
+            metrics=["directional_clip"],
+            image=t_edit,
+            reference=t_src,
+            prompt="target prompt",
+            source_prompt="source prompt",
+            device="cpu",
+        )
+        assert "directional_clip" in res
+
+
+def test_evaluate_directional_clip_validation_errors():
+    """Verify directional_clip parameter validations and error messages."""
+    img = Image.new("RGB", (32, 32))
+
+    # Missing prompt
+    with pytest.raises(
+        ValueError,
+        match="prompt is required when 'directional_clip' metric is selected",
+    ):
+        evaluate(
+            metrics="directional_clip",
+            image=img,
+            reference=img,
+            source_prompt="src",
+        )
+
+    # Missing reference
+    with pytest.raises(
+        ValueError,
+        match="reference is required when 'directional_clip'",
+    ):
+        evaluate(
+            metrics="directional_clip",
+            image=img,
+            prompt="tgt",
+            source_prompt="src",
+        )
+
+    # Missing source_prompt
+    with pytest.raises(
+        ValueError,
+        match=(
+            "source_prompt is required when 'directional_clip' "
+            "metric is selected"
+        ),
+    ):
+        evaluate(
+            metrics="directional_clip",
+            image=img,
+            reference=img,
+            prompt="tgt",
+        )
+
+    # Source prompt provided when not selected
+    with pytest.raises(
+        ValueError,
+        match=(
+            "source_prompt was provided but 'directional_clip' "
+            "metric was not selected"
+        ),
+    ):
+        evaluate(
+            metrics="ssim",
+            image=img,
+            reference=img,
+            source_prompt="unused",
+        )
+
+
+def test_evaluate_directional_clip_rejects_directory(tmp_path):
+    """Verify directional_clip rejects directory inputs."""
+    d = tmp_path / "img_dir"
+    d.mkdir()
+    img = tmp_path / "single.png"
+    Image.new("RGB", (32, 32)).save(img)
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "image and reference must be single images for "
+            "'directional_clip'"
+        ),
+    ):
+        evaluate(
+            metrics="directional_clip",
+            image=str(d),
+            reference=str(img),
+            prompt="tgt",
+            source_prompt="src",
+        )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "image and reference must be single images for "
+            "'directional_clip'"
+        ),
+    ):
+        evaluate(
+            metrics="directional_clip",
+            image=str(img),
+            reference=str(d),
+            prompt="tgt",
+            source_prompt="src",
+        )
+
+
+def test_evaluate_mixed_metrics_with_directional_clip():
+    """Verify evaluate() runs directional_clip mixed with other metrics."""
+    img_src = Image.new("RGB", (32, 32), color=(50, 50, 50))
+    img_edit = Image.new("RGB", (32, 32), color=(150, 150, 150))
+
+    with (
+        patch(
+            "image_evaluator.directional_clip_predictor."
+            "AutoModel.from_pretrained"
+        ) as mock_model_cls,
+        patch(
+            "image_evaluator.directional_clip_predictor."
+            "AutoProcessor.from_pretrained"
+        ) as mock_proc_cls,
+        patch(
+            "image_evaluator.directional_clip_predictor."
+            "AutoTokenizer.from_pretrained"
+        ) as mock_tok_cls,
+    ):
+        mock_model = MagicMock()
+        mock_model.to.return_value = mock_model
+        feat = torch.tensor([[1.0, 0.0, 0.0, 0.0]])
+        mock_model.get_image_features.return_value = feat
+        mock_model.get_text_features.return_value = feat
+        mock_model_cls.return_value = mock_model
+
+        mock_proc = MagicMock()
+        mock_proc.return_value = {"pixel_values": torch.zeros(1, 3, 224, 224)}
+        mock_proc_cls.return_value = mock_proc
+
+        mock_tok = MagicMock()
+        mock_tok.return_value = {"input_ids": torch.zeros(1, 10)}
+        mock_tok_cls.return_value = mock_tok
+
+        res = evaluate(
+            metrics=["ssim", "directional_clip"],
+            image=img_edit,
+            reference=img_src,
+            prompt="target",
+            source_prompt="source",
+            device="cpu",
+        )
+        assert "ssim" in res
+        assert "directional_clip" in res
+        assert isinstance(res["ssim"], float)
+        assert isinstance(res["directional_clip"], float)
+
+
+def test_registry_capabilities_single_source_of_truth():
+    """Verify core capability sets strictly match Registry specifications."""
+    from image_evaluator.core import (
+        DATASET_METRICS,
+        PAIRWISE_METRICS,
+        PROMPT_METRICS,
+        REFERENCE_METRICS,
+        SOURCE_PROMPT_METRICS,
+        SUPPORTED_METRICS,
+    )
+    from image_evaluator.registry import list_metrics
+
+    specs = list_metrics()
+    assert SUPPORTED_METRICS == {s.id for s in specs}
+    assert "directional_clip" in SUPPORTED_METRICS
+    assert len(SUPPORTED_METRICS) == 10
+
+    assert PROMPT_METRICS == {
+        s.id for s in specs if "prompt" in s.inputs.required
+    }
+    assert "directional_clip" in PROMPT_METRICS
+
+    assert SOURCE_PROMPT_METRICS == {"directional_clip"}
+    assert "directional_clip" in REFERENCE_METRICS
+    assert DATASET_METRICS == {"fid", "kid"}
+    assert PAIRWISE_METRICS == {"arcface", "lpips", "ssim", "psnr"}

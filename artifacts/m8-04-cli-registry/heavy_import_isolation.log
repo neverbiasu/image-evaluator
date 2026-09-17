@@ -1,0 +1,415 @@
+[
+  {
+    "id": "aesthetic",
+    "display_name": "LAION Aesthetic Score",
+    "score_direction": "higher_is_better",
+    "tasks": [
+      "text_to_image",
+      "image_editing"
+    ],
+    "objectives": [
+      "aesthetic_quality"
+    ],
+    "inputs": {
+      "required": [
+        "image"
+      ],
+      "optional": []
+    },
+    "implementation": {
+      "backend": "laion-aesthetic-predictor",
+      "protocol": "linear-head-on-clip-embedding",
+      "model": "vit_l_14",
+      "backend_version": null,
+      "model_revision": null
+    },
+    "aggregation": [
+      "arithmetic_mean_for_directory_inputs"
+    ],
+    "dependencies": [
+      "open-clip-torch",
+      "torch"
+    ],
+    "citations": [
+      "https://github.com/LAION-AI/aesthetic-predictor"
+    ],
+    "docs_path": "docs/aesthetic-score.md"
+  },
+  {
+    "id": "arcface",
+    "display_name": "ArcFace Distance",
+    "score_direction": "lower_is_better",
+    "tasks": [
+      "face_generation",
+      "face_editing"
+    ],
+    "objectives": [
+      "identity_preservation"
+    ],
+    "inputs": {
+      "required": [
+        "image",
+        "reference_image"
+      ],
+      "optional": []
+    },
+    "implementation": {
+      "backend": "insightface",
+      "protocol": "face-embedding-distance",
+      "model": "buffalo_l",
+      "backend_version": null,
+      "model_revision": null
+    },
+    "aggregation": [
+      "arithmetic_mean_for_directory_inputs"
+    ],
+    "dependencies": [
+      "insightface",
+      "onnxruntime"
+    ],
+    "citations": [
+      "https://arxiv.org/abs/1801.07698",
+      "https://github.com/deepinsight/insightface"
+    ],
+    "docs_path": "docs/arcface-distance.md"
+  },
+  {
+    "id": "clip",
+    "display_name": "CLIP Score",
+    "score_direction": "higher_is_better",
+    "tasks": [
+      "text_to_image",
+      "image_editing"
+    ],
+    "objectives": [
+      "text_image_alignment"
+    ],
+    "inputs": {
+      "required": [
+        "image",
+        "prompt"
+      ],
+      "optional": []
+    },
+    "implementation": {
+      "backend": "transformers",
+      "protocol": "image-text-cosine-similarity",
+      "model": "openai/clip-vit-base-patch32",
+      "backend_version": null,
+      "model_revision": null
+    },
+    "aggregation": [
+      "arithmetic_mean_for_directory_inputs"
+    ],
+    "dependencies": [
+      "transformers",
+      "torch"
+    ],
+    "citations": [
+      "https://arxiv.org/abs/2104.08718",
+      "https://github.com/Taited/clip-score"
+    ],
+    "docs_path": "docs/clip-similarity.md"
+  },
+  {
+    "id": "directional_clip",
+    "display_name": "Directional CLIP",
+    "score_direction": "higher_is_better",
+    "tasks": [
+      "image_editing"
+    ],
+    "objectives": [
+      "edit_direction_alignment"
+    ],
+    "inputs": {
+      "required": [
+        "image",
+        "reference_image",
+        "prompt",
+        "source_prompt"
+      ],
+      "optional": []
+    },
+    "implementation": {
+      "backend": "transformers",
+      "protocol": "directional-embedding-cosine-similarity",
+      "model": "openai/clip-vit-base-patch32",
+      "backend_version": null,
+      "model_revision": null
+    },
+    "aggregation": [],
+    "dependencies": [
+      "transformers",
+      "torch"
+    ],
+    "citations": [
+      "https://arxiv.org/abs/2108.00946",
+      "https://arxiv.org/abs/2211.09800"
+    ],
+    "docs_path": "docs/directional-clip.md"
+  },
+  {
+    "id": "fid",
+    "display_name": "Fr\u00e9chet Inception Distance",
+    "score_direction": "lower_is_better",
+    "tasks": [
+      "text_to_image"
+    ],
+    "objectives": [
+      "distribution_similarity"
+    ],
+    "inputs": {
+      "required": [
+        "image_collection",
+        "reference_collection"
+      ],
+      "optional": []
+    },
+    "implementation": {
+      "backend": "clean-fid",
+      "protocol": "clean-fid",
+      "model": "inception_v3",
+      "backend_version": "0.1.35",
+      "model_revision": null
+    },
+    "aggregation": [],
+    "dependencies": [
+      "clean-fid"
+    ],
+    "citations": [
+      "Parmar et al., On Aliased Resizing and Surprising Subtleties in GAN Evaluation, CVPR 2022"
+    ],
+    "docs_path": "docs/fid.md"
+  },
+  {
+    "id": "kid",
+    "display_name": "Kernel Inception Distance",
+    "score_direction": "lower_is_better",
+    "tasks": [
+      "text_to_image"
+    ],
+    "objectives": [
+      "distribution_similarity"
+    ],
+    "inputs": {
+      "required": [
+        "image_collection",
+        "reference_collection"
+      ],
+      "optional": []
+    },
+    "implementation": {
+      "backend": "clean-fid",
+      "protocol": "polynomial-mmd",
+      "model": "inception_v3",
+      "backend_version": "0.1.35",
+      "model_revision": null
+    },
+    "aggregation": [
+      "mean_over_random_subsets"
+    ],
+    "dependencies": [
+      "clean-fid"
+    ],
+    "citations": [
+      "Binkowski et al., Demystifying MMD GANs, ICLR 2018",
+      "Parmar et al., On Aliased Resizing and Surprising Subtleties in GAN Evaluation, CVPR 2022"
+    ],
+    "docs_path": "docs/kid.md"
+  },
+  {
+    "id": "lpips",
+    "display_name": "Learned Perceptual Image Patch Similarity",
+    "score_direction": "lower_is_better",
+    "tasks": [
+      "image_editing",
+      "image_reconstruction",
+      "super_resolution"
+    ],
+    "objectives": [
+      "perceptual_similarity"
+    ],
+    "inputs": {
+      "required": [
+        "image",
+        "reference_image"
+      ],
+      "optional": []
+    },
+    "implementation": {
+      "backend": "lpips",
+      "protocol": "deep-feature-distance",
+      "model": "alex",
+      "backend_version": null,
+      "model_revision": null
+    },
+    "aggregation": [
+      "arithmetic_mean_for_directory_inputs"
+    ],
+    "dependencies": [
+      "lpips",
+      "torch"
+    ],
+    "citations": [
+      "https://github.com/richzhang/PerceptualSimilarity"
+    ],
+    "docs_path": "docs/pairwise-fidelity.md"
+  },
+  {
+    "id": "pickscore",
+    "display_name": "PickScore",
+    "score_direction": "higher_is_better",
+    "tasks": [
+      "text_to_image",
+      "image_editing"
+    ],
+    "objectives": [
+      "human_preference"
+    ],
+    "inputs": {
+      "required": [
+        "image",
+        "prompt"
+      ],
+      "optional": []
+    },
+    "implementation": {
+      "backend": "transformers",
+      "protocol": "prompt-conditioned-preference-score",
+      "model": "yuvalkirstain/PickScore_v1",
+      "backend_version": null,
+      "model_revision": null
+    },
+    "aggregation": [
+      "arithmetic_mean_for_directory_inputs"
+    ],
+    "dependencies": [
+      "transformers",
+      "torch"
+    ],
+    "citations": [
+      "Kirstain et al., Pick-a-Pic: An Open Dataset of User Preferences for Text-to-Image Generation, NeurIPS 2023"
+    ],
+    "docs_path": "docs/pickscore.md"
+  },
+  {
+    "id": "psnr",
+    "display_name": "Peak Signal-to-Noise Ratio",
+    "score_direction": "higher_is_better",
+    "tasks": [
+      "image_editing",
+      "image_reconstruction",
+      "super_resolution"
+    ],
+    "objectives": [
+      "pixel_fidelity"
+    ],
+    "inputs": {
+      "required": [
+        "image",
+        "reference_image"
+      ],
+      "optional": []
+    },
+    "implementation": {
+      "backend": "image-evaluator",
+      "protocol": "peak-signal-to-noise-ratio",
+      "model": null,
+      "backend_version": null,
+      "model_revision": null
+    },
+    "aggregation": [
+      "arithmetic_mean_for_directory_inputs"
+    ],
+    "dependencies": [
+      "torch"
+    ],
+    "citations": [
+      "Standard signal processing definition"
+    ],
+    "docs_path": "docs/pairwise-fidelity.md"
+  },
+  {
+    "id": "ssim",
+    "display_name": "Structural Similarity Index Measure",
+    "score_direction": "higher_is_better",
+    "tasks": [
+      "image_editing",
+      "image_reconstruction",
+      "super_resolution"
+    ],
+    "objectives": [
+      "structural_similarity"
+    ],
+    "inputs": {
+      "required": [
+        "image",
+        "reference_image"
+      ],
+      "optional": []
+    },
+    "implementation": {
+      "backend": "image-evaluator",
+      "protocol": "structural-similarity-index",
+      "model": null,
+      "backend_version": null,
+      "model_revision": null
+    },
+    "aggregation": [
+      "arithmetic_mean_for_directory_inputs"
+    ],
+    "dependencies": [
+      "torch"
+    ],
+    "citations": [
+      "Wang et al., IEEE TIP 2004"
+    ],
+    "docs_path": "docs/pairwise-fidelity.md"
+  }
+]
+torch in sys.modules: False
+cleanfid in sys.modules: False
+clip in sys.modules: False
+{
+  "id": "directional_clip",
+  "display_name": "Directional CLIP",
+  "score_direction": "higher_is_better",
+  "tasks": [
+    "image_editing"
+  ],
+  "objectives": [
+    "edit_direction_alignment"
+  ],
+  "inputs": {
+    "required": [
+      "image",
+      "reference_image",
+      "prompt",
+      "source_prompt"
+    ],
+    "optional": []
+  },
+  "implementation": {
+    "backend": "transformers",
+    "protocol": "directional-embedding-cosine-similarity",
+    "model": "openai/clip-vit-base-patch32",
+    "backend_version": null,
+    "model_revision": null
+  },
+  "aggregation": [],
+  "dependencies": [
+    "transformers",
+    "torch"
+  ],
+  "citations": [
+    "https://arxiv.org/abs/2108.00946",
+    "https://arxiv.org/abs/2211.09800"
+  ],
+  "docs_path": "docs/directional-clip.md"
+}
+torch in sys.modules: False
+cleanfid in sys.modules: False
+clip in sys.modules: False
+=== Test 1: CLI list command heavy import check ===
+
+=== Test 2: CLI show command heavy import check ===

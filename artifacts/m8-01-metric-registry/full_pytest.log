@@ -1,0 +1,68 @@
+........................................................................ [ 23%]
+........................................................................ [ 46%]
+........................................................................ [ 70%]
+........................................................................ [ 93%]
+....................                                                     [100%]
+=============================== warnings summary ===============================
+tests/test_api_evaluate.py::test_evaluate_lpips_in_memory
+tests/test_api_evaluate.py::test_evaluate_float32_precision_preservation
+tests/test_lpips_predictor.py::test_evaluate_lpips_identical_images_zero
+tests/test_lpips_predictor.py::test_evaluate_lpips_size_mismatch_raises_value_error
+tests/test_lpips_predictor.py::test_evaluate_folder_lpips_averages_scores
+  /Users/nev4rb14su/workspace/image-evaluator/.conda/lib/python3.11/site-packages/torchvision/models/_utils.py:207: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+    warnings.warn(
+
+tests/test_api_evaluate.py::test_evaluate_lpips_in_memory
+tests/test_api_evaluate.py::test_evaluate_float32_precision_preservation
+tests/test_lpips_predictor.py::test_evaluate_lpips_identical_images_zero
+tests/test_lpips_predictor.py::test_evaluate_lpips_size_mismatch_raises_value_error
+tests/test_lpips_predictor.py::test_evaluate_folder_lpips_averages_scores
+  /Users/nev4rb14su/workspace/image-evaluator/.conda/lib/python3.11/site-packages/torchvision/models/_utils.py:222: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=AlexNet_Weights.IMAGENET1K_V1`. You can also use `weights=AlexNet_Weights.DEFAULT` to get the most up-to-date weights.
+    warnings.warn(msg)
+
+tests/test_fid_predictor.py::test_different_sample_counts_and_directory_roles
+  /Users/nev4rb14su/workspace/image-evaluator/tests/test_fid_predictor.py:188: UserWarning: FID is sensitive to sample size (Nref=2, Ngen=5). Statistical reliability requires task-specific convergence or repeated trials; Nref and Ngen are recorded for auditability.
+    res = pred.evaluate_folder_fid(str(ref_dir), str(gen_dir))
+
+tests/test_fid_predictor.py::test_recursive_discovery_and_non_image_filtering
+  /Users/nev4rb14su/workspace/image-evaluator/tests/test_fid_predictor.py:242: UserWarning: FID is sensitive to sample size (Nref=3, Ngen=2). Statistical reliability requires task-specific convergence or repeated trials; Nref and Ngen are recorded for auditability.
+    res = pred.evaluate_folder_fid(str(ref_dir), str(gen_dir))
+
+tests/test_fid_predictor.py::test_non_finite_return_value_raises_value_error
+  /Users/nev4rb14su/workspace/image-evaluator/tests/test_fid_predictor.py:266: UserWarning: FID is sensitive to sample size (Nref=2, Ngen=2). Statistical reliability requires task-specific convergence or repeated trials; Nref and Ngen are recorded for auditability.
+    pred.evaluate_folder_fid(str(ref_dir), str(gen_dir))
+
+tests/test_fid_predictor.py::test_non_finite_return_value_raises_value_error
+  /Users/nev4rb14su/workspace/image-evaluator/tests/test_fid_predictor.py:270: UserWarning: FID is sensitive to sample size (Nref=2, Ngen=2). Statistical reliability requires task-specific convergence or repeated trials; Nref and Ngen are recorded for auditability.
+    pred.evaluate_folder_fid(str(ref_dir), str(gen_dir))
+
+tests/test_fid_predictor.py::test_backend_exception_propagates
+  /Users/nev4rb14su/workspace/image-evaluator/tests/test_fid_predictor.py:294: UserWarning: FID is sensitive to sample size (Nref=2, Ngen=2). Statistical reliability requires task-specific convergence or repeated trials; Nref and Ngen are recorded for auditability.
+    pred.evaluate_folder_fid(str(ref_dir), str(gen_dir))
+
+tests/test_fid_predictor.py::test_cleanfid_version_match_succeeds
+  /Users/nev4rb14su/workspace/image-evaluator/tests/test_fid_predictor.py:315: UserWarning: FID is sensitive to sample size (Nref=2, Ngen=2). Statistical reliability requires task-specific convergence or repeated trials; Nref and Ngen are recorded for auditability.
+    res = pred.evaluate_folder_fid(str(ref_dir), str(gen_dir))
+
+tests/test_fid_predictor.py::test_cleanfid_version_mismatch_fails_and_does_not_call_backend
+  /Users/nev4rb14su/workspace/image-evaluator/tests/test_fid_predictor.py:342: UserWarning: FID is sensitive to sample size (Nref=2, Ngen=2). Statistical reliability requires task-specific convergence or repeated trials; Nref and Ngen are recorded for auditability.
+    pred.evaluate_folder_fid(str(ref_dir), str(gen_dir))
+
+tests/test_fid_predictor.py::test_cleanfid_missing_metadata_raises_import_error
+  /Users/nev4rb14su/workspace/image-evaluator/tests/test_fid_predictor.py:370: UserWarning: FID is sensitive to sample size (Nref=2, Ngen=2). Statistical reliability requires task-specific convergence or repeated trials; Nref and Ngen are recorded for auditability.
+    pred.evaluate_folder_fid(str(ref_dir), str(gen_dir))
+
+tests/test_fid_predictor.py::test_frechet_distance_math_against_independent_formula
+tests/test_fid_predictor.py::test_frechet_distance_identical_features_zero
+tests/test_fid_predictor.py::test_frechet_distance_symmetry
+tests/test_fid_predictor.py::test_frechet_distance_symmetry
+  /Users/nev4rb14su/workspace/image-evaluator/.conda/lib/python3.11/site-packages/cleanfid/fid.py:46: DeprecationWarning: The `disp` argument is deprecated and will be removed in SciPy 1.18.0.
+    covmean, _ = linalg.sqrtm(sigma1.dot(sigma2), disp=False)
+
+tests/test_fid_predictor.py::test_frechet_distance_math_against_independent_formula
+  /Users/nev4rb14su/workspace/image-evaluator/tests/test_fid_predictor.py:431: DeprecationWarning: The `disp` argument is deprecated and will be removed in SciPy 1.18.0.
+    covmean, _ = linalg.sqrtm(s1.dot(s2), disp=False)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+308 passed, 23 warnings in 18.63s
+exit code: 0

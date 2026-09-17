@@ -31,18 +31,20 @@ flowchart LR
 
 ## Metric Selection
 
-| Target Goal | Metric Name | Required Options | Output Direction | Technical Details |
-| :--- | :--- | :--- | :--- | :--- |
-| Visual appeal & quality | `aesthetic` | `--image` | Higher is better | [docs/aesthetic-score.md](docs/aesthetic-score.md) |
-| Prompt semantic match | `clip` | `--image`, `--prompt` | Higher is better | [docs/clip-similarity.md](docs/clip-similarity.md) |
-| Image editing direction | `directional_clip` | `--image`, `--reference`, `--prompt`, `--prompt-src` | Higher is better | [docs/directional-clip.md](docs/directional-clip.md) |
-| Facial identity consistency | `arcface` | `--image`, `--reference` | Lower is better | [docs/arcface-distance.md](docs/arcface-distance.md) |
-| Deep perceptual similarity | `lpips` | `--image`, `--reference` | Lower is better | [docs/pairwise-fidelity.md](docs/pairwise-fidelity.md) |
-| Structural degradation | `ssim` | `--image`, `--reference` | Higher is better | [docs/pairwise-fidelity.md](docs/pairwise-fidelity.md) |
-| Pixel reconstruction SNR | `psnr` | `--image`, `--reference` | Higher is better | [docs/pairwise-fidelity.md](docs/pairwise-fidelity.md) |
-| Population distribution distance | `fid` | `--image <dir>`, `--reference <dir>` | Lower is better | [docs/fid.md](docs/fid.md) |
-| Unbiased kernel MMD distance | `kid` | `--image <dir>`, `--reference <dir>` | Lower is better | [docs/kid.md](docs/kid.md) |
-| Human preference & alignment | `pickscore` | `--image`, `--prompt` | Higher is better | [docs/pickscore.md](docs/pickscore.md) |
+The toolkit registers 10 core metrics backed by an immutable `MetricRegistry`. Each metric provides formal input contracts, task and objective discovery tags, and execution protocols:
+
+| Metric ID | Display Name | Tasks | Objectives | Required Inputs | Direction | Technical Details |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `aesthetic` | LAION Aesthetic Score | `text_to_image`, `image_editing` | `aesthetic_quality` | `image` | Higher is better | [docs/aesthetic-score.md](docs/aesthetic-score.md) |
+| `clip` | CLIP Score | `text_to_image`, `image_editing` | `text_image_alignment` | `image`, `prompt` | Higher is better | [docs/clip-similarity.md](docs/clip-similarity.md) |
+| `directional_clip` | Directional CLIP | `image_editing` | `edit_direction_alignment` | `image`, `reference_image`, `prompt`, `source_prompt` | Higher is better | [docs/directional-clip.md](docs/directional-clip.md) |
+| `arcface` | ArcFace Distance | `face_generation`, `face_editing` | `identity_preservation` | `image`, `reference_image` | Lower is better | [docs/arcface-distance.md](docs/arcface-distance.md) |
+| `lpips` | Learned Perceptual Patch Similarity | `image_editing`, `image_reconstruction`, `super_resolution` | `perceptual_similarity` | `image`, `reference_image` | Lower is better | [docs/pairwise-fidelity.md](docs/pairwise-fidelity.md) |
+| `ssim` | Structural Similarity Index Measure | `image_editing`, `image_reconstruction`, `super_resolution` | `structural_similarity` | `image`, `reference_image` | Higher is better | [docs/pairwise-fidelity.md](docs/pairwise-fidelity.md) |
+| `psnr` | Peak Signal-to-Noise Ratio | `image_editing`, `image_reconstruction`, `super_resolution` | `pixel_fidelity` | `image`, `reference_image` | Higher is better | [docs/pairwise-fidelity.md](docs/pairwise-fidelity.md) |
+| `fid` | Fréchet Inception Distance | `text_to_image`, `unconditional_generation` | `distribution_similarity` | `image_collection`, `reference_collection` | Lower is better | [docs/fid.md](docs/fid.md) |
+| `kid` | Kernel Inception Distance | `text_to_image`, `unconditional_generation` | `distribution_similarity` | `image_collection`, `reference_collection` | Lower is better | [docs/kid.md](docs/kid.md) |
+| `pickscore` | PickScore | `text_to_image` | `human_preference` | `image`, `prompt` | Higher is better | [docs/pickscore.md](docs/pickscore.md) |
 
 ## Quick Start
 
@@ -58,13 +60,41 @@ The supported runtime path is macOS or Linux with CPU ONNX Runtime. Linux
 users who want the GPU runtime can replace `onnxruntime` with
 `onnxruntime-gpu` after installation. Windows is currently unverified.
 
+### CLI Metric Discovery & Inspection
+
+`image-evaluator` provides instant metric discovery and specification inspection with zero deep-model loading overhead (<20ms response):
+
+1. **List all registered metrics**:
+   ```bash
+   image-evaluator list
+   ```
+
+2. **Filter metrics by task or objective**:
+   ```bash
+   image-evaluator list --task image_editing
+   image-evaluator list --objective pixel_fidelity
+   image-evaluator list -t image_reconstruction -o structural_similarity
+   ```
+
+3. **Inspect detailed metric specification**:
+   ```bash
+   image-evaluator show directional_clip
+   ```
+
+4. **Structured JSON output for pipeline discovery**:
+   ```bash
+   image-evaluator list --format json
+   image-evaluator show directional_clip --format json
+   ```
+
 ### Tutorial
 
 The CLI enforces explicit metric selection via `--metrics` and initializes only selected models:
-- `--metrics` (required): One or more of `aesthetic`, `clip`, `arcface`, `lpips`, `ssim`, `psnr`, `fid`, `kid`, `pickscore`.
+- `--metrics` (required): One or more of `aesthetic`, `clip`, `directional_clip`, `arcface`, `lpips`, `ssim`, `psnr`, `fid`, `kid`, `pickscore`.
 - `--image` (required): Path to an image file or directory (must be a directory when `fid` or `kid` is selected).
-- `--prompt`: Required when `clip` or `pickscore` is selected; prohibited otherwise.
-- `--reference`: Required when reference-based metrics (`arcface`, `lpips`, `ssim`, `psnr`, `fid`, `kid`) are selected; prohibited otherwise (must be a directory when `fid` or `kid` is selected).
+- `--prompt`: Required when `clip`, `pickscore`, or `directional_clip` is selected; prohibited otherwise.
+- `--prompt-src`: Required when `directional_clip` is selected; describes the source image before editing.
+- `--reference`: Required when reference-based metrics (`directional_clip`, `arcface`, `lpips`, `ssim`, `psnr`, `fid`, `kid`) are selected; prohibited otherwise (must be a directory when `fid` or `kid` is selected).
 - `--format`: Output format, either `text` (default) or `json` (for CI/CD and `jq` pipelines).
 
 1. **Aesthetic evaluation only**:
@@ -111,16 +141,16 @@ The CLI enforces explicit metric selection via `--metrics` and initializes only 
 
 ### Python SDK (Zero-Disk-I/O Memory Stream)
 
-For single-image and pairwise metrics (`aesthetic`, `clip`, `arcface`, `lpips`, `ssim`, `psnr`, `pickscore`), evaluate in-memory `PIL.Image`, `torch.Tensor`, or `numpy.ndarray` objects directly without saving to disk (dataset metrics `fid` and `kid` require directory paths):
+For single-image and pairwise metrics (`aesthetic`, `clip`, `directional_clip`, `arcface`, `lpips`, `ssim`, `psnr`, `pickscore`), evaluate in-memory `PIL.Image`, `torch.Tensor`, or `numpy.ndarray` objects directly without saving to disk (dataset metrics `fid` and `kid` require directory paths):
 
 ```python
 import torch
-from image_evaluator import evaluate
+from image_evaluator import evaluate, evaluate_detailed
 
-# Evaluate in-memory PyTorch tensors directly
 t_img = torch.rand(3, 256, 256)
 t_ref = torch.rand(3, 256, 256)
 
+# 1. Standard Dictionary Return (100% backward compatible)
 scores = evaluate(
     metrics=["ssim", "psnr"],
     image=t_img,
@@ -128,6 +158,39 @@ scores = evaluate(
     device="cpu",
 )
 print(scores)  # {'ssim': 0.0012, 'psnr': 8.142}
+
+# 2. Detailed Result API (structured result with timing & specs)
+result = evaluate_detailed(
+    metrics=["ssim", "psnr"],
+    image=t_img,
+    reference=t_ref,
+    device="cpu",
+)
+print(result["ssim"])              # 0.0012 (Mapping protocol transparent access)
+print(result.scores)               # {'ssim': 0.0012, 'psnr': 8.142}
+print(result.duration_seconds)     # float: precise execution duration
+print(result.to_json())            # RFC 8259 compliant JSON string
+```
+
+#### Programmatic Metric Registry Discovery
+
+Inspect registered metric specifications directly without importing heavy model backends:
+
+```python
+from image_evaluator.registry import filter_metrics, get_metric, list_metrics
+
+# List all 10 registered metrics (<20ms response, zero heavy imports)
+all_metrics = list_metrics()
+
+# Filter metrics by task and objective
+editing_metrics = filter_metrics(task="image_editing")
+fidelity_metrics = filter_metrics(objective="pixel_fidelity")
+
+# Inspect specification details
+spec = get_metric("directional_clip")
+print(spec.display_name)       # "Directional CLIP"
+print(spec.score_direction)    # "higher_is_better"
+print(spec.inputs.required)    # ("image", "reference_image", "prompt", "source_prompt")
 ```
 
 ### Batch Evaluation & Performance Best Practices

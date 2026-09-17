@@ -2,6 +2,37 @@
 
 All notable user-facing changes to `image-evaluator` are recorded here.
 
+## [0.5.0] - 2026-09-18
+
+### Added
+
+- Added an immutable Metric Registry that describes all ten metrics through
+  consistent input contracts, task and objective tags, score direction,
+  implementation provenance, dependencies, citations, and documentation paths.
+- Added `EvaluationResult` and `evaluate_detailed()` for structured results with
+  metric specifications, input provenance, execution duration, mapping access,
+  and RFC 8259 JSON serialization.
+- Added Directional CLIP support to the Python `evaluate()` API through the
+  four-input `image`, `reference`, `prompt`, and `source_prompt` contract.
+- Added lightweight CLI discovery through `list` and `show`, including task and
+  objective filters, text or JSON output, and compatibility aliases.
+
+### Changed
+
+- Made the Metric Registry the shared capability source for Python API
+  validation, CLI discovery, and the documented metric catalog.
+- Expanded README examples and executable documentation tests for registry
+  discovery and detailed evaluation results.
+- Preserved the existing `evaluate()` dictionary return value by default while
+  allowing callers to request detailed results explicitly.
+
+### Fixed
+
+- Removed capability drift that previously left Directional CLIP available from
+  the CLI and predictor API but unavailable from the top-level Python API.
+- Kept metric discovery isolated from Torch, Transformers, LPIPS, and CleanFID
+  imports so catalog inspection does not initialize evaluation backends.
+
 ## [0.4.0] - 2026-09-15
 
 ### Added

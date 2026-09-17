@@ -180,3 +180,142 @@ def test_batch_performance_cli_directory_mode_subprocess(
     assert "ssim" in data["metrics"]
     assert "psnr" in data["metrics"]
     assert data["metrics"]["ssim"] == pytest.approx(1.0, abs=1e-5)
+
+
+def test_readme_python_sdk_evaluate_detailed_example():
+    """Verify evaluate_detailed example from README.md."""
+    from image_evaluator import EvaluationResult, evaluate_detailed
+
+    t_img = torch.rand(3, 32, 32)
+    t_ref = torch.rand(3, 32, 32)
+
+    result = evaluate_detailed(
+        metrics=["ssim", "psnr"],
+        image=t_img,
+        reference=t_ref,
+        device="cpu",
+    )
+    assert isinstance(result, EvaluationResult)
+    assert isinstance(result["ssim"], float)
+    assert "ssim" in result.scores
+    assert "psnr" in result.scores
+    assert result.duration_seconds >= 0.0
+    payload = json.loads(result.to_json())
+    assert "scores" in payload
+    assert "specs" in payload
+    assert "inputs" in payload
+    assert "duration_seconds" in payload
+
+
+def test_readme_registry_programmatic_api_example():
+    """Verify programmatic registry discovery snippet from README.md."""
+    from image_evaluator.registry import (
+        filter_metrics,
+        get_metric,
+        list_metrics,
+    )
+
+    all_metrics = list_metrics()
+    assert len(all_metrics) == 10
+
+    editing_metrics = filter_metrics(task="image_editing")
+    assert len(editing_metrics) >= 1
+
+    fidelity_metrics = filter_metrics(objective="pixel_fidelity")
+    assert len(fidelity_metrics) >= 1
+
+    spec = get_metric("directional_clip")
+    assert spec.display_name == "Directional CLIP"
+    assert spec.score_direction == "higher_is_better"
+    assert "source_prompt" in spec.inputs.required
+
+
+def test_readme_cli_discovery_examples():
+    """Verify CLI list and show commands documented in README.md."""
+    env = dict(os.environ, PYTHONPATH=".")
+
+    # 1. list
+    proc_list = subprocess.run(
+        [sys.executable, "-m", "image_evaluator.main", "list"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert proc_list.returncode == 0
+    assert "Available Evaluation Metrics" in proc_list.stdout
+
+    # 2. list --task image_editing
+    proc_task = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "image_evaluator.main",
+            "list",
+            "--task",
+            "image_editing",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert proc_task.returncode == 0
+    assert "directional_clip" in proc_task.stdout
+
+    # 3. list --format json
+    proc_json = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "image_evaluator.main",
+            "list",
+            "--format",
+            "json",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert proc_json.returncode == 0
+    metrics_data = json.loads(proc_json.stdout)
+    assert len(metrics_data) == 10
+
+    # 4. show directional_clip
+    proc_show = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "image_evaluator.main",
+            "show",
+            "directional_clip",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert proc_show.returncode == 0
+    assert "Directional CLIP" in proc_show.stdout
+
+    # 5. show directional_clip --format json
+    proc_show_json = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "image_evaluator.main",
+            "show",
+            "directional_clip",
+            "--format",
+            "json",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert proc_show_json.returncode == 0
+    spec_data = json.loads(proc_show_json.stdout)
+    assert spec_data["id"] == "directional_clip"
+    assert spec_data["display_name"] == "Directional CLIP"

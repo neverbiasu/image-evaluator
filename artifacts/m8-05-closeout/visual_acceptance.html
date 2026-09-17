@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>M8-05 Registry 驱动文档目录与 0.5.0 候选封板 可视化验收看板</title>
+    <style>
+        /* CSS 样式定义：深色模式与响应式网格 */
+        :root {
+            --bg-primary: #0b0f19;
+            --bg-secondary: #111827;
+            --bg-card: #1f2937;
+            --bg-card-hover: #283548;
+            --text-primary: #f9fafb;
+            --text-secondary: #9ca3af;
+            --text-muted: #6b7280;
+            --accent-blue: #38bdf8;
+            --accent-green: #34d399;
+            --accent-yellow: #fbbf24;
+            --accent-purple: #c084fc;
+            --accent-red: #f87171;
+            --border-color: #374151;
+            --border-subtle: #1f2937;
+            --badge-bg: rgba(56, 189, 248, 0.15);
+            --badge-border: rgba(56, 189, 248, 0.3);
+            --pass-bg: rgba(52, 211, 153, 0.15);
+            --pass-border: rgba(52, 211, 153, 0.4);
+            --pending-bg: rgba(251, 191, 36, 0.15);
+            --pending-border: rgba(251, 191, 36, 0.4);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            padding: 24px;
+        }
+
+        .container {
+            max-width: 1240px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px 28px;
+            margin-bottom: 24px;
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 12px;
+        }
+
+        .meta-tag {
+            font-size: 12px;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: var(--accent-blue);
+            font-weight: 700;
+        }
+
+        .status-badges {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            font-size: 12px;
+            padding: 4px 10px;
+            border-radius: 9999px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .badge-pass {
+            background-color: var(--pass-bg);
+            border: 1px solid var(--pass-border);
+            color: var(--accent-green);
+        }
+
+        .badge-pending {
+            background-color: var(--pending-bg);
+            border: 1px solid var(--pending-border);
+            color: var(--accent-yellow);
+        }
+
+        h1 {
+            font-size: 26px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-bottom: 16px;
+        }
+
+        .header-meta {
+            display: flex;
+            gap: 20px;
+            font-size: 13px;
+            color: var(--text-muted);
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            padding-top: 12px;
+            flex-wrap: wrap;
+        }
+
+        /* 统计卡片网格 */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .stat-val {
+            font-size: 32px;
+            font-weight: 800;
+            color: var(--accent-green);
+            margin-bottom: 4px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        }
+
+        .stat-val.blue { color: var(--accent-blue); }
+        .stat-val.purple { color: var(--accent-purple); }
+
+        .stat-label {
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        /* 主体内容布局 */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        .card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 22px 24px;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .card-title {
+            font-size: 17px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .card-tag {
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background-color: var(--badge-bg);
+            border: 1px solid var(--badge-border);
+            color: var(--accent-blue);
+            font-family: ui-monospace, SFMono-Regular, monospace;
+        }
+
+        /* 表格样式 */
+        .table-responsive {
+            overflow-x: auto;
+            margin-top: 12px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            text-align: left;
+        }
+
+        th {
+            background-color: rgba(0, 0, 0, 0.25);
+            color: var(--text-secondary);
+            font-weight: 600;
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border-color);
+            white-space: nowrap;
+        }
+
+        td {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border-subtle);
+            color: var(--text-primary);
+        }
+
+        tr:hover {
+            background-color: var(--bg-card-hover);
+        }
+
+        .badge-code {
+            background-color: rgba(255, 255, 255, 0.08);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: ui-monospace, SFMono-Regular, monospace;
+            font-size: 12px;
+            color: var(--accent-blue);
+        }
+
+        .badge-tag {
+            display: inline-block;
+            background: rgba(192, 132, 252, 0.15);
+            border: 1px solid rgba(192, 132, 252, 0.3);
+            color: var(--accent-purple);
+            font-size: 11px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin: 2px 2px 2px 0;
+            font-family: ui-monospace, SFMono-Regular, monospace;
+        }
+
+        /* 证据清单 */
+        .evidence-list {
+            list-style: none;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        .evidence-item {
+            background-color: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .evidence-icon {
+            font-weight: bold;
+            color: var(--accent-green);
+        }
+
+        .evidence-name {
+            font-size: 13px;
+            font-weight: 600;
+            font-family: ui-monospace, SFMono-Regular, monospace;
+            color: var(--accent-blue);
+        }
+
+        .evidence-desc {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        /* 停机门禁卡片 */
+        .stopgate-box {
+            background: linear-gradient(135deg, rgba(251, 191, 36, 0.08) 0%, rgba(251, 191, 36, 0.02) 100%);
+            border: 1px solid var(--pending-border);
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 24px;
+        }
+
+        .stopgate-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--accent-yellow);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .stopgate-desc {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        /* 响应式调整 */
+        @media (max-width: 768px) {
+            body { padding: 12px; }
+            h1 { font-size: 20px; }
+            .header-top { flex-direction: column; align-items: flex-start; }
+            .stats-grid { grid-template-columns: 1fr 1fr; }
+            .evidence-list { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 头部导航与基本元数据 -->
+        <header>
+            <div class="header-top">
+                <span class="meta-tag">Work Unit: M8-05 / Milestone 8 (0.5.0)</span>
+                <div class="status-badges">
+                    <span class="badge badge-pass">Pytest: 343 Passed</span>
+                    <span class="badge badge-pass">Ruff: Clean</span>
+                    <span class="badge badge-pass">Build: Sdist &amp; Wheel Clean</span>
+                    <span class="badge badge-pass">Twine: PASSED</span>
+                    <span class="badge badge-pass">Boss Gate: 本地封板已批准</span>
+                </div>
+            </div>
+            <h1>Metric Registry 驱动文档目录与 0.5.0 候选封板 看板</h1>
+            <p class="subtitle">全量 10 大评估指标规格权威对齐 · CLI 发现与详细结果 API 范式实测零漂移 · 打包双端验证 · 独立验收审计</p>
+            <div class="header-meta">
+                <span>分支: <code>develop</code></span>
+                <span>当前代码库版本: <code>0.5.0</code></span>
+                <span>发布状态: Git 提交、Tag 与远端发布待 Boss 最终批准</span>
+                <span>执行人: Codex Manager / Antigravity</span>
+                <span>日期: 2026-09-18</span>
+            </div>
+        </header>
+
+        <!-- 关键核心指标 -->
+        <section class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-val">343</div>
+                <div class="stat-label">全量 Pytest 通过数 (0 失败)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-val blue">39</div>
+                <div class="stat-label">M8-05 专项测试通过数</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-val purple">10 / 10</div>
+                <div class="stat-label">注册指标与权威文档 100% 对应</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-val">PASSED</div>
+                <div class="stat-label">Twine Wheel &amp; Sdist 校验</div>
+            </div>
+        </section>
+
+        <!-- 主体网格 -->
+        <main class="main-grid">
+            <!-- 1. 注册中心 10 大指标全量规格目录 -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">1. MetricRegistry 驱动的 10 大指标权威规格目录 (Single Source of Truth)</div>
+                    <span class="card-tag">Immutable Catalog</span>
+                </div>
+                <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">
+                    所有指标元数据、任务/目标开放标签、输入契约与文档路径均由 <code>image_evaluator/registry.py</code> 中的只读单例驱动，并通过 <code>test_all_registered_metrics_have_existing_docs_paths</code> 保证 100% 文件存在。
+                </p>
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>指标 ID</th>
+                                <th>显示名称</th>
+                                <th>任务类别 (Tasks)</th>
+                                <th>评估目标 (Objectives)</th>
+                                <th>输入契约 (Inputs)</th>
+                                <th>得分取向</th>
+                                <th>权威文档路径</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><span class="badge-code">aesthetic</span></td>
+                                <td>LAION Aesthetic Score</td>
+                                <td><span class="badge-tag">text_to_image</span><span class="badge-tag">image_editing</span></td>
+                                <td><span class="badge-tag">aesthetic_quality</span></td>
+                                <td><code>image</code></td>
+                                <td style="color: var(--accent-green);">higher_is_better</td>
+                                <td><code>docs/aesthetic-score.md</code></td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge-code">clip</span></td>
+                                <td>CLIP Score</td>
+                                <td><span class="badge-tag">text_to_image</span><span class="badge-tag">image_editing</span></td>
+                                <td><span class="badge-tag">text_image_alignment</span></td>
+                                <td><code>image, prompt</code></td>
+                                <td style="color: var(--accent-green);">higher_is_better</td>
+                                <td><code>docs/clip-similarity.md</code></td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge-code">directional_clip</span></td>
+                                <td>Directional CLIP</td>
+                                <td><span class="badge-tag">image_editing</span></td>
+                                <td><span class="badge-tag">edit_direction_alignment</span></td>
+                                <td><code>image, ref, prompt, prompt_src</code></td>
+                                <td style="color: var(--accent-green);">higher_is_better</td>
+                                <td><code>docs/directional-clip.md</code></td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge-code">arcface</span></td>
+                                <td>ArcFace Distance</td>
+                                <td><span class="badge-tag">face_generation</span><span class="badge-tag">face_editing</span></td>
+                                <td><span class="badge-tag">identity_preservation</span></td>
+                                <td><code>image, reference_image</code></td>
+                                <td style="color: var(--accent-blue);">lower_is_better</td>
+                                <td><code>docs/arcface-distance.md</code></td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge-code">lpips</span></td>
+                                <td>Learned Perceptual Patch Similarity</td>
+                                <td><span class="badge-tag">image_editing</span><span class="badge-tag">reconstruction</span></td>
+                                <td><span class="badge-tag">perceptual_similarity</span></td>
+                                <td><code>image, reference_image</code></td>
+                                <td style="color: var(--accent-blue);">lower_is_better</td>
+                                <td><code>docs/pairwise-fidelity.md</code></td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge-code">ssim</span></td>
+                                <td>Structural Similarity Index Measure</td>
+                                <td><span class="badge-tag">image_editing</span><span class="badge-tag">reconstruction</span></td>
+                                <td><span class="badge-tag">structural_similarity</span></td>
+                                <td><code>image, reference_image</code></td>
+                                <td style="color: var(--accent-green);">higher_is_better</td>
+                                <td><code>docs/pairwise-fidelity.md</code></td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge-code">psnr</span></td>
+                                <td>Peak Signal-to-Noise Ratio</td>
+                                <td><span class="badge-tag">image_editing</span><span class="badge-tag">reconstruction</span></td>
+                                <td><span class="badge-tag">pixel_fidelity</span></td>
+                                <td><code>image, reference_image</code></td>
+                                <td style="color: var(--accent-green);">higher_is_better</td>
+                                <td><code>docs/pairwise-fidelity.md</code></td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge-code">fid</span></td>
+                                <td>Fréchet Inception Distance</td>
+                                <td><span class="badge-tag">text_to_image</span><span class="badge-tag">unconditional</span></td>
+                                <td><span class="badge-tag">distribution_similarity</span></td>
+                                <td><code>image_collection, ref_collection</code></td>
+                                <td style="color: var(--accent-blue);">lower_is_better</td>
+                                <td><code>docs/fid.md</code></td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge-code">kid</span></td>
+                                <td>Kernel Inception Distance</td>
+                                <td><span class="badge-tag">text_to_image</span><span class="badge-tag">unconditional</span></td>
+                                <td><span class="badge-tag">distribution_similarity</span></td>
+                                <td><code>image_collection, ref_collection</code></td>
+                                <td style="color: var(--accent-blue);">lower_is_better</td>
+                                <td><code>docs/kid.md</code></td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge-code">pickscore</span></td>
+                                <td>PickScore</td>
+                                <td><span class="badge-tag">text_to_image</span></td>
+                                <td><span class="badge-tag">human_preference</span></td>
+                                <td><code>image, prompt</code></td>
+                                <td style="color: var(--accent-green);">higher_is_better</td>
+                                <td><code>docs/pickscore.md</code></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 2. 文档可执行性与代码零漂移保障 -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">2. 文档代码示例真实可执行性保障 (Zero Drift Protocol)</div>
+                    <span class="card-tag">8 Executable Doc Tests</span>
+                </div>
+                <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">
+                    <code>tests/test_docs_examples.py</code> 扩充至 8 个测试，针对 README.md 中新增的所有 CLI 指令与 Python SDK 代码进行真实子进程与内存流调用断言：
+                </p>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px;">
+                    <div style="background: rgba(0,0,0,0.25); padding: 12px; border-radius: 6px; border: 1px solid var(--border-subtle);">
+                        <div style="color: var(--accent-blue); font-weight: 600; font-size: 13px; margin-bottom: 4px;">CLI list / show 命令探查</div>
+                        <div style="color: var(--text-secondary); font-size: 12px;">断言 <code>list</code>、<code>list --task</code>、<code>list --format json</code>、<code>show</code>、<code>show --format json</code> 均正常执行且返回值符合规格。</div>
+                    </div>
+                    <div style="background: rgba(0,0,0,0.25); padding: 12px; border-radius: 6px; border: 1px solid var(--border-subtle);">
+                        <div style="color: var(--accent-green); font-weight: 600; font-size: 13px; margin-bottom: 4px;">Python evaluate_detailed 示例</div>
+                        <div style="color: var(--text-secondary); font-size: 12px;">断言返回 <code>EvaluationResult</code> 实例，具备下标访问、耗时统计、元数据字典与 RFC 8259 <code>to_json()</code> 导出。</div>
+                    </div>
+                    <div style="background: rgba(0,0,0,0.25); padding: 12px; border-radius: 6px; border: 1px solid var(--border-subtle);">
+                        <div style="color: var(--accent-purple); font-weight: 600; font-size: 13px; margin-bottom: 4px;">MetricRegistry 编程检索接口</div>
+                        <div style="color: var(--text-secondary); font-size: 12px;">断言 <code>list_metrics()</code>、<code>get_metric()</code> 与 <code>filter_metrics()</code> 返回 10 项全量指标且零重依赖。</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. 构建与封板预检证据 -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">3. 打包构建与门禁合规证据链 (Packaging &amp; Verification Evidence)</div>
+                    <span class="card-tag">Gate Verification</span>
+                </div>
+                <ul class="evidence-list">
+                    <li class="evidence-item">
+                        <span class="evidence-icon">✔</span>
+                        <div>
+                            <div class="evidence-name">full_pytest.log</div>
+                            <div class="evidence-desc">全量 343 项单元与集成测试 100% 通过，包含封板返修回归</div>
+                        </div>
+                    </li>
+                    <li class="evidence-item">
+                        <span class="evidence-icon">✔</span>
+                        <div>
+                            <div class="evidence-name">targeted_tests.log</div>
+                            <div class="evidence-desc">39 项 Registry、CLI 与 EvaluationResult 发布敏感测试全绿</div>
+                        </div>
+                    </li>
+                    <li class="evidence-item">
+                        <span class="evidence-icon">✔</span>
+                        <div>
+                            <div class="evidence-name">ruff.log</div>
+                            <div class="evidence-desc">Ruff 代码规范与 import 排序检查全部 clean (0 警告)</div>
+                        </div>
+                    </li>
+                    <li class="evidence-item">
+                        <span class="evidence-icon">✔</span>
+                        <div>
+                            <div class="evidence-name">git_diff_check.log</div>
+                            <div class="evidence-desc">Git diff 空白符与格式检查 clean (0 警告)</div>
+                        </div>
+                    </li>
+                    <li class="evidence-item">
+                        <span class="evidence-icon">✔</span>
+                        <div>
+                            <div class="evidence-name">build.log</div>
+                            <div class="evidence-desc">wheel 与 sdist 纯净打包成功 (zero build warnings)</div>
+                        </div>
+                    </li>
+                    <li class="evidence-item">
+                        <span class="evidence-icon">✔</span>
+                        <div>
+                            <div class="evidence-name">twine.log</div>
+                            <div class="evidence-desc">twine check 双产物校验通过 (PASSED)</div>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+        </main>
+
+        <!-- 停机门禁声明 -->
+        <div class="stopgate-box">
+            <div class="stopgate-title">GOVERNANCE &amp; STOP GATE: 0.5.0 本地封板完成，远端发布待 Boss 最终批准</div>
+            <div class="stopgate-desc">
+                根据项目治理准则，技术全绿与构建通过不等于最终封板。在 Boss 明确回复裁决前：<br>
+                <strong>严禁提交 Git 提交，严禁在未获批准前修改 pyproject.toml 版本号至 0.5.0，严禁发布至 PyPI。</strong><br>
+                请 Boss 审查综合封板报告并裁决是否完成 Milestone 8 (0.5.0) 正式封板。
+            </div>
+        </div>
+    </div>
+</body>
+</html>

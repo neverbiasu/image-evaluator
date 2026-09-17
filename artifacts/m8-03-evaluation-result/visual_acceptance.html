@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>M8-03 EvaluationResult 详细结果 API 可视化验收看板</title>
+    <style>
+        /* CSS 样式定义：深色模式与响应式栅格 */
+        :root {
+            --bg-primary: #0b0f19;
+            --bg-secondary: #111827;
+            --bg-card: #1f2937;
+            --bg-card-hover: #283548;
+            --text-primary: #f9fafb;
+            --text-secondary: #9ca3af;
+            --text-muted: #6b7280;
+            --accent-blue: #38bdf8;
+            --accent-green: #34d399;
+            --accent-yellow: #fbbf24;
+            --accent-purple: #c084fc;
+            --accent-red: #f87171;
+            --border-color: #374151;
+            --border-subtle: #1f2937;
+            --badge-bg: rgba(56, 189, 248, 0.15);
+            --badge-border: rgba(56, 189, 248, 0.3);
+            --pass-bg: rgba(52, 211, 153, 0.15);
+            --pass-border: rgba(52, 211, 153, 0.4);
+            --pending-bg: rgba(251, 191, 36, 0.15);
+            --pending-border: rgba(251, 191, 36, 0.4);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            padding: 24px;
+        }
+
+        .container {
+            max-width: 1240px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px 28px;
+            margin-bottom: 24px;
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 12px;
+        }
+
+        .meta-tag {
+            font-size: 12px;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: var(--accent-blue);
+            font-weight: 700;
+        }
+
+        .status-badges {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 14px;
+            border-radius: 9999px;
+            font-size: 13px;
+            font-weight: 600;
+            line-height: 1;
+        }
+
+        .badge-pass {
+            background: var(--pass-bg);
+            color: var(--accent-green);
+            border: 1px solid var(--pass-border);
+        }
+
+        .badge-pending {
+            background: var(--pending-bg);
+            color: var(--accent-yellow);
+            border: 1px solid var(--pending-border);
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-bottom: 24px;
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-bottom: 24px;
+        }
+
+        .grid-4 {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .card {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 20px;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+        }
+
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--accent-blue);
+        }
+
+        .stat-box {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 4px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        }
+
+        .stat-value.green {
+            color: var(--accent-green);
+        }
+
+        .stat-value.blue {
+            color: var(--accent-blue);
+        }
+
+        .stat-value.purple {
+            color: var(--accent-purple);
+        }
+
+        .stat-label {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            text-align: left;
+        }
+
+        th, td {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        th {
+            background-color: var(--bg-card);
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-family: ui-monospace, monospace;
+            font-weight: 600;
+        }
+
+        .tag-blue {
+            background: rgba(56, 189, 248, 0.2);
+            color: var(--accent-blue);
+        }
+
+        .tag-green {
+            background: rgba(52, 211, 153, 0.2);
+            color: var(--accent-green);
+        }
+
+        .tag-purple {
+            background: rgba(192, 132, 252, 0.2);
+            color: var(--accent-purple);
+        }
+
+        .tag-yellow {
+            background: rgba(251, 191, 36, 0.2);
+            color: var(--accent-yellow);
+        }
+
+        .tag-red {
+            background: rgba(248, 113, 113, 0.2);
+            color: var(--accent-red);
+        }
+
+        pre {
+            background: #050811;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 12px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 12px;
+            overflow-x: auto;
+            color: #e2e8f0;
+            line-height: 1.5;
+        }
+
+        .code-added {
+            color: #86efac;
+        }
+
+        .code-removed {
+            color: #fca5a5;
+        }
+
+        .code-comment {
+            color: #64748b;
+        }
+
+        ul {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        li {
+            margin-bottom: 8px;
+            font-size: 13px;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+        }
+
+        .bullet-pass {
+            color: var(--accent-green);
+            font-weight: bold;
+        }
+
+        .stopgate-box {
+            background: rgba(251, 191, 36, 0.08);
+            border: 1px solid var(--accent-yellow);
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 24px;
+        }
+
+        .stopgate-title {
+            color: var(--accent-yellow);
+            font-weight: 700;
+            font-size: 15px;
+            margin-bottom: 8px;
+        }
+
+        @media (max-width: 900px) {
+            .grid-2, .grid-3, .grid-4 {
+                grid-template-columns: 1fr;
+            }
+            body {
+                padding: 16px;
+            }
+            header {
+                padding: 16px;
+            }
+            .header-top {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 头部信息 -->
+        <header>
+            <div class="header-top">
+                <div>
+                    <span class="meta-tag">Work Unit: M8-03 / Milestone 8 (0.5.0)</span>
+                    <h1>EvaluationResult 详细结果 API 可视化验收看板</h1>
+                    <p class="subtitle">结构化包装对象 · 映射协议兼容 · 元数据与规格对齐 · 零破坏性平滑升级</p>
+                </div>
+                <div class="status-badges">
+                    <span class="badge badge-pass">CI/Test: 323 Passed</span>
+                    <span class="badge badge-pass">Ruff: Clean</span>
+                    <span class="badge badge-pass">Git Diff: Clean</span>
+                    <span class="badge badge-pending">Boss Gate: 待验收</span>
+                </div>
+            </div>
+            <div style="font-size: 12px; color: var(--text-muted); display: flex; gap: 20px; flex-wrap: wrap;">
+                <span>分支: develop</span>
+                <span>当前版本: 0.4.0 (未修改)</span>
+                <span>验收日期: 2026-09-17</span>
+                <span>执行人: Codex Manager / Antigravity</span>
+            </div>
+        </header>
+
+        <!-- 关键数据概览 -->
+        <div class="grid-4">
+            <div class="stat-box">
+                <div class="stat-value green">323</div>
+                <div class="stat-label">全量 Pytest 通过数 (0 失败)</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value blue">9</div>
+                <div class="stat-label">M8-03 专属定向测试通过数</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value purple">100%</div>
+                <div class="stat-label">既有 evaluate() 返回兼容度</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value green">0</div>
+                <div class="stat-label">顶层预加载开销 (Zero Eager Torch)</div>
+            </div>
+        </div>
+
+        <!-- 架构与设计说明 -->
+        <div class="grid-2">
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">双通道 API 设计：兼顾极简与深度分析</span>
+                    <span class="tag tag-blue">Dual-Channel API</span>
+                </div>
+                <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">
+                    M8-03 为 Python 调用方提供了平滑过渡能力：默认保留最轻量的纯字典返回，同时提供结构化结果对象。
+                </p>
+                <pre><code><span class="code-comment"># 通道 1：既有极简字典返回（完全向后兼容，默认行为）</span>
+res_dict = evaluate(img, reference=ref, metrics="ssim")
+<span class="code-comment"># res_dict -> {'ssim': 1.0}</span>
+
+<span class="code-comment"># 通道 2A：标记参数获取 EvaluationResult</span>
+res_obj = evaluate(img, reference=ref, metrics="ssim", detailed=True)
+
+<span class="code-comment"># 通道 2B：专属显式函数获取 EvaluationResult</span>
+res_obj = evaluate_detailed(img, reference=ref, metrics="ssim")
+<span class="code-comment"># res_obj['ssim'] -> 1.0 (Mapping 协议直接取值)</span>
+<span class="code-comment"># res_obj.specs['ssim'].score_direction -> 'higher_is_better'</span>
+<span class="code-comment"># res_obj.to_json() -> RFC 8259 合规纯净 JSON 字符串</span></code></pre>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">EvaluationResult 核心属性与契约</span>
+                    <span class="tag tag-purple">Rich Contract</span>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>成员 / 方法</th>
+                            <th>类型 / 签名</th>
+                            <th>说明与设计原则</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>scores</code></td>
+                            <td><code>dict[str, float]</code></td>
+                            <td>纯净数值结果字典，防篡改浅拷贝隔离</td>
+                        </tr>
+                        <tr>
+                            <td><code>specs</code></td>
+                            <td><code>dict[str, MetricSpec]</code></td>
+                            <td>从 Registry 绑定的指标完整规格元数据</td>
+                        </tr>
+                        <tr>
+                            <td><code>inputs</code></td>
+                            <td><code>dict[str, Any]</code></td>
+                            <td>本次执行的入参画像（类型、设备、Prompt）</td>
+                        </tr>
+                        <tr>
+                            <td><code>duration_seconds</code></td>
+                            <td><code>float</code></td>
+                            <td>精准评测耗时审计（基于 <code>perf_counter</code>）</td>
+                        </tr>
+                        <tr>
+                            <td><code>__getitem__</code> / <code>get</code></td>
+                            <td><code>Mapping[str, float]</code></td>
+                            <td>完全兼容 <code>res["ssim"]</code> 既有字典取值习惯</td>
+                        </tr>
+                        <tr>
+                            <td><code>to_dict()</code></td>
+                            <td><code>dict[str, float]</code></td>
+                            <td>导出标准浮点数结果字典</td>
+                        </tr>
+                        <tr>
+                            <td><code>to_json()</code></td>
+                            <td><code>str</code></td>
+                            <td>严格 RFC 8259 规范，非有限值自动转 null</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 协议兼容与安全隔离 -->
+        <div class="grid-2">
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">Mapping 协议兼容性与防御性校验</span>
+                    <span class="tag tag-yellow">Protocol Guard</span>
+                </div>
+                <ul>
+                    <li>
+                        <span class="bullet-pass">✓</span>
+                        <div>
+                            <strong>下标与成员检测：</strong>
+                            <div style="color: var(--text-secondary); font-size: 12px;">支持 <code>res["ssim"]</code>、<code>"ssim" in res</code>、<code>len(res)</code> 及迭代。</div>
+                        </div>
+                    </li>
+                    <li>
+                        <span class="bullet-pass">✓</span>
+                        <div>
+                            <strong>不可变性保障：</strong>
+                            <div style="color: var(--text-secondary); font-size: 12px;">基于 <code>@dataclass(frozen=True, slots=True)</code>，防外部非法属性注入。</div>
+                        </div>
+                    </li>
+                    <li>
+                        <span class="bullet-pass">✓</span>
+                        <div>
+                            <strong>数值与类型防线：</strong>
+                            <div style="color: var(--text-secondary); font-size: 12px;">指标名必须为字符串，分值必须为浮点数，耗时必须为非负数。</div>
+                        </div>
+                    </li>
+                    <li>
+                        <span class="bullet-pass">✓</span>
+                        <div>
+                            <strong>RFC 8259 序列化防崩溃：</strong>
+                            <div style="color: var(--text-secondary); font-size: 12px;">PSNR 等指标可能出现的无穷大自动安全归一化为 <code>null</code>。</div>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">轻量级顶层导入与按需加载隔离</span>
+                    <span class="tag tag-green">Zero Heavy Imports</span>
+                </div>
+                <ul>
+                    <li>
+                        <span class="bullet-pass">✓</span>
+                        <div>
+                            <strong>顶层导出隔离：</strong>
+                            <div style="color: var(--text-secondary); font-size: 12px;"><code>from image_evaluator import EvaluationResult</code> 零加载 <code>torch</code>。</div>
+                        </div>
+                    </li>
+                    <li>
+                        <span class="bullet-pass">✓</span>
+                        <div>
+                            <strong>按需模型加载：</strong>
+                            <div style="color: var(--text-secondary); font-size: 12px;">只有当计算 CLIP/FID/PickScore 时才激活重依赖后端。</div>
+                        </div>
+                    </li>
+                    <li>
+                        <span class="bullet-pass">✓</span>
+                        <div>
+                            <strong>纯标准库实现：</strong>
+                            <div style="color: var(--text-secondary); font-size: 12px;"><code>image_evaluator/result.py</code> 仅依赖 Python 内置标准库与规格定义。</div>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- 证据链与交付物清单 -->
+        <div class="card" style="margin-bottom: 24px;">
+            <div class="card-header">
+                <span class="card-title">持久化证据链与交付物清单</span>
+                <span class="tag tag-green">6 Logs + Real Screenshots + Report</span>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>证据文件</th>
+                        <th>类型</th>
+                        <th>校验指标 / 说明</th>
+                        <th>状态</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>artifacts/m8-03-evaluation-result/targeted_tests.log</code></td>
+                        <td>原始日志</td>
+                        <td><code>tests/test_evaluation_result.py</code> 9 项测试全部通过</td>
+                        <td><span class="tag tag-green">9 Passed</span></td>
+                    </tr>
+                    <tr>
+                        <td><code>artifacts/m8-03-evaluation-result/full_pytest.log</code></td>
+                        <td>原始日志</td>
+                        <td>完整测试套件 323 项测试全部通过 (0 失败)</td>
+                        <td><span class="tag tag-green">323 Passed</span></td>
+                    </tr>
+                    <tr>
+                        <td><code>artifacts/m8-03-evaluation-result/ruff.log</code></td>
+                        <td>静态检查</td>
+                        <td>Ruff 代码规范与风格检查 0 报错</td>
+                        <td><span class="tag tag-green">Clean</span></td>
+                    </tr>
+                    <tr>
+                        <td><code>artifacts/m8-03-evaluation-result/git_diff_check.log</code></td>
+                        <td>代码合规</td>
+                        <td>Git diff 空白符与格式规范检查 0 报错</td>
+                        <td><span class="tag tag-green">Clean</span></td>
+                    </tr>
+                    <tr>
+                        <td><code>artifacts/m8-03-evaluation-result/git_status.log</code></td>
+                        <td>范围受控</td>
+                        <td>严格受控于白名单文件，无任何越界变更</td>
+                        <td><span class="tag tag-green">Controlled</span></td>
+                    </tr>
+                    <tr>
+                        <td><code>artifacts/m8-03-evaluation-result/heavy_import_isolation.log</code></td>
+                        <td>架构隔离</td>
+                        <td>验证 EvaluationResult 导入零预加载，秒级轻量</td>
+                        <td><span class="tag tag-green">Verified</span></td>
+                    </tr>
+                    <tr>
+                        <td><code>artifacts/m8-03-evaluation-result/terminal_validation.png</code></td>
+                        <td>物理截图</td>
+                        <td>真实 macOS Terminal.app 执行验证截图 (系统抓取)</td>
+                        <td><span class="tag tag-blue">Pending Capture</span></td>
+                    </tr>
+                    <tr>
+                        <td><code>artifacts/m8-03-evaluation-result/browser_desktop.png</code></td>
+                        <td>文档截图</td>
+                        <td>Chrome Headless 桌面视口真实渲染截图</td>
+                        <td><span class="tag tag-blue">Pending Render</span></td>
+                    </tr>
+                    <tr>
+                        <td><code>artifacts/m8-03-evaluation-result/browser_narrow.png</code></td>
+                        <td>文档截图</td>
+                        <td>Chrome Headless 窄屏移动视口真实渲染截图</td>
+                        <td><span class="tag tag-blue">Pending Render</span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 停机门禁 -->
+        <div class="stopgate-box">
+            <div class="stopgate-title">GOVERNANCE & STOP GATE: Boss 明确验收前不得进入 M8-04</div>
+            <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.6;">
+                根据项目治理总则与交接文件约定：技术 PASS 不等于 Boss 验收。当前代码修改严格限定于白名单。<br>
+                在 Boss 明确回复验收确认前：<strong>严禁提交 Git 提交，严禁修改版本号（当前保持 0.4.0），严禁推进至 M8-04，严禁发布至 PyPI。</strong>
+            </p>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,11 @@
+warning: unable to access '/Users/nev4rb14su/.config/git/ignore': Operation not permitted
+warning: unable to access '/Users/nev4rb14su/.config/git/ignore': Operation not permitted
+ M image_evaluator/__init__.py
+ M image_evaluator/core.py
+ M tests/test_api_evaluate.py
+?? artifacts/
+?? image_evaluator/registry.py
+?? image_evaluator/result.py
+?? image_evaluator/specifications.py
+?? tests/test_evaluation_result.py
+?? tests/test_metric_registry.py

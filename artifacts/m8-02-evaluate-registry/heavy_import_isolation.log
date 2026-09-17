@@ -1,0 +1,20 @@
+--- Step 1: Top-level import image_evaluator ---
+torch in sys.modules: False
+cleanfid in sys.modules: False
+clip in sys.modules: False
+
+--- Step 2: Import evaluate from image_evaluator ---
+torch in sys.modules: True
+cleanfid in sys.modules: False
+clip in sys.modules: False
+
+--- Step 3: Run SSIM evaluation with dummy PIL images ---
+SSIM result: {'ssim': 1.0}
+cleanfid in sys.modules: False
+clip in sys.modules: False
+
+--- Step 4: Run Directional CLIP evaluation with dummy PIL images ---
+Loading CLIP model: openai/clip-vit-base-patch32
+Loading weights:   0%|          | 0/398 [00:00<?, ?it/s]Loading weights: 100%|██████████| 398/398 [00:00<00:00, 10620.72it/s]
+directional_clip result: {'directional_clip': 0.0}
+clip in sys.modules after DC: False

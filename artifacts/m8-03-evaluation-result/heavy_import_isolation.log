@@ -1,0 +1,21 @@
+--- Step 1: Top-level import image_evaluator ---
+torch in sys.modules: False
+cleanfid in sys.modules: False
+clip in sys.modules: False
+
+--- Step 2: Import EvaluationResult from image_evaluator ---
+torch in sys.modules: False
+cleanfid in sys.modules: False
+clip in sys.modules: False
+
+--- Step 3: Import evaluate_detailed from image_evaluator ---
+torch in sys.modules: True
+cleanfid in sys.modules: False
+clip in sys.modules: False
+
+--- Step 4: Run SSIM evaluate_detailed() with dummy PIL image ---
+Result repr: EvaluationResult(ssim=1.0000)
+Result scores: {'ssim': 1.0}
+Result JSON: {"scores": {"ssim": 1.0}, "specs": {"ssim": {"id": "ssim", "display_name": "Structural Similarity Index Measure", "score_direction": "higher_is_better", "tasks": ["image_editing", "image_reconstruction", "super_resolution"], "objectives": ["structural_similarity"], "docs_path": "docs/pairwise-fidelity.md"}}, "inputs": {"image_type": "Image", "reference_type": "Image", "prompt": null, "source_prompt": null, "device": null}, "duration_seconds": 5.9973}
+cleanfid in sys.modules: False
+clip in sys.modules: False

@@ -1,25 +1,38 @@
 import os
+import time
 from collections.abc import Sequence
 from typing import Any
 
 import torch
 
-SUPPORTED_METRICS = {
-    "aesthetic",
-    "clip",
-    "arcface",
-    "lpips",
-    "ssim",
-    "psnr",
-    "fid",
-    "kid",
-    "pickscore",
-}
+from image_evaluator.registry import get_metric, list_metrics
+from image_evaluator.result import EvaluationResult
 
-PROMPT_METRICS = {"clip", "pickscore"}
-PAIRWISE_METRICS = {"arcface", "lpips", "ssim", "psnr"}
-DATASET_METRICS = {"fid", "kid"}
-REFERENCE_METRICS = PAIRWISE_METRICS | DATASET_METRICS
+_ALL_SPECS = list_metrics()
+SUPPORTED_METRICS = {spec.id for spec in _ALL_SPECS}
+PROMPT_METRICS = {
+    spec.id for spec in _ALL_SPECS if "prompt" in spec.inputs.required
+}
+REFERENCE_METRICS = {
+    spec.id
+    for spec in _ALL_SPECS
+    if "reference_image" in spec.inputs.required
+    or "reference_collection" in spec.inputs.required
+}
+DATASET_METRICS = {
+    spec.id
+    for spec in _ALL_SPECS
+    if "reference_collection" in spec.inputs.required
+}
+PAIRWISE_METRICS = {
+    spec.id
+    for spec in _ALL_SPECS
+    if "reference_image" in spec.inputs.required
+    and "arithmetic_mean_for_directory_inputs" in spec.aggregation
+}
+SOURCE_PROMPT_METRICS = {
+    spec.id for spec in _ALL_SPECS if "source_prompt" in spec.inputs.required
+}
 
 
 def evaluate(
@@ -27,9 +40,11 @@ def evaluate(
     image: Any,
     reference: Any = None,
     prompt: str | None = None,
+    source_prompt: str | None = None,
     device: str | torch.device | None = None,
+    detailed: bool = False,
     **kwargs: Any,
-) -> dict[str, Any]:
+) -> dict[str, Any] | EvaluationResult:
     """Evaluate one or more metrics across image(s), references, or prompts.
 
     Supports paths, PIL.Image instances, and torch.Tensors directly
@@ -39,17 +54,23 @@ def evaluate(
         metrics: Single metric name or collection of metric names.
         image: Evaluated image (path, PIL Image, or torch.Tensor).
         reference: Reference image or folder for pairwise/distribution metrics.
-        prompt: Text prompt string required for 'clip' and 'pickscore'.
+        prompt: Text prompt string required for 'clip', 'pickscore', and
+            'directional_clip'.
+        source_prompt: Source prompt string required for 'directional_clip'.
         device: Computing device ('cuda', 'cpu', 'mps', or None for auto).
+        detailed: If True, return an EvaluationResult instance instead of a
+            plain dict.
         **kwargs: Additional parameters passed to specific predictors.
 
     Returns:
-        dict[str, Any]: Mapping of metric names to calculated scores.
+        dict[str, Any] | EvaluationResult: Mapping of metric names to scores,
+        or an EvaluationResult instance when detailed=True.
 
     Raises:
         ValueError: If metric names or required parameters are invalid.
         FileNotFoundError: If any specified file or folder path does not exist.
     """
+    start_time = time.perf_counter()
     if isinstance(metrics, str):
         metric_list = [metrics.lower().strip()]
     elif isinstance(metrics, Sequence):
@@ -107,6 +128,28 @@ def evaluate(
             "metric was selected."
         )
 
+    # Validate source_prompt for directional_clip
+    selected_source_prompt = selected & SOURCE_PROMPT_METRICS
+    if selected_source_prompt:
+        if source_prompt is None or not (
+            isinstance(source_prompt, str) and source_prompt.strip()
+        ):
+            if len(selected_source_prompt) == 1:
+                single_metric = next(iter(selected_source_prompt))
+                raise ValueError(
+                    f"source_prompt is required when '{single_metric}' "
+                    "metric is selected."
+                )
+            raise ValueError(
+                "source_prompt is required when source-prompt-based "
+                "metrics are selected."
+            )
+    elif source_prompt is not None:
+        raise ValueError(
+            "source_prompt was provided but 'directional_clip' "
+            "metric was not selected."
+        )
+
     # Determine if inputs are folders
     is_image_folder = (
         isinstance(image, (str, os.PathLike)) and os.path.isdir(str(image))
@@ -115,6 +158,12 @@ def evaluate(
         isinstance(reference, (str, os.PathLike))
         and os.path.isdir(str(reference))
     )
+
+    if "directional_clip" in selected and (is_image_folder or is_ref_folder):
+        raise ValueError(
+            "image and reference must be single images for "
+            "'directional_clip' metric."
+        )
 
     # Validate dataset metrics
     for d_metric in DATASET_METRICS:
@@ -255,4 +304,71 @@ def evaluate(
         else:
             results["pickscore"] = pred_pick.evaluate(image, prompt)
 
+    # 10. Directional CLIP
+    if "directional_clip" in selected:
+        from image_evaluator.directional_clip_predictor import (
+            DirectionalClipPredictor,
+        )
+
+        clip_model = kwargs.get("clip_model", "openai/clip-vit-base-patch32")
+        pred_dir_clip = DirectionalClipPredictor(
+            clip_model=clip_model, device=device
+        )
+        results["directional_clip"] = (
+            pred_dir_clip.evaluate_directional_clip(
+                image_src=reference,
+                image_edit=image,
+                prompt_src=source_prompt,  # type: ignore[arg-type]
+                prompt_target=prompt,  # type: ignore[arg-type]
+            )
+        )
+
+    if detailed:
+        duration_seconds = max(0.0, time.perf_counter() - start_time)
+        specs = {m: get_metric(m) for m in results}
+        inputs_summary: dict[str, Any] = {
+            "image_type": type(image).__name__,
+            "reference_type": (
+                type(reference).__name__ if reference is not None else None
+            ),
+            "prompt": prompt,
+            "source_prompt": source_prompt,
+            "device": str(device) if device is not None else None,
+        }
+        return EvaluationResult(
+            scores=results,
+            specs=specs,
+            inputs=inputs_summary,
+            duration_seconds=duration_seconds,
+        )
+
     return results
+
+
+def evaluate_detailed(
+    metrics: str | Sequence[str],
+    image: Any,
+    reference: Any = None,
+    prompt: str | None = None,
+    source_prompt: str | None = None,
+    device: str | torch.device | None = None,
+    **kwargs: Any,
+) -> EvaluationResult:
+    """Evaluate metric(s) and return an EvaluationResult instance.
+
+    Provides identical calculation capabilities to evaluate(), but packages
+    the outcome in an EvaluationResult containing scores, Registry
+    specifications, input metadata, and RFC 8259 JSON serialization.
+    """
+    res = evaluate(
+        metrics=metrics,
+        image=image,
+        reference=reference,
+        prompt=prompt,
+        source_prompt=source_prompt,
+        device=device,
+        detailed=True,
+        **kwargs,
+    )
+    assert isinstance(res, EvaluationResult)
+    return res

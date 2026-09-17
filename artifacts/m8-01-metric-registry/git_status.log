@@ -1,0 +1,8 @@
+warning: unable to access '/Users/nev4rb14su/.config/git/ignore': Operation not permitted
+warning: unable to access '/Users/nev4rb14su/.config/git/ignore': Operation not permitted
+## develop
+?? artifacts/
+?? image_evaluator/registry.py
+?? image_evaluator/specifications.py
+?? tests/test_metric_registry.py
+exit code: 0

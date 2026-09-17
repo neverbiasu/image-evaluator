@@ -9,6 +9,13 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
+from image_evaluator.registry import (
+    filter_metrics,
+    get_metric,
+    list_metrics,
+)
+from image_evaluator.specifications import MetricSpec
+
 
 class CLIInputError(ValueError):
     """Raised when expected CLI runtime inputs are invalid or missing."""
@@ -123,7 +130,219 @@ def _normalize_json_values(obj: Any) -> Any:
     return obj
 
 
+def _spec_to_dict(spec: MetricSpec) -> dict[str, Any]:
+    return {
+        "id": spec.id,
+        "display_name": spec.display_name,
+        "score_direction": spec.score_direction,
+        "tasks": list(spec.tasks),
+        "objectives": list(spec.objectives),
+        "inputs": {
+            "required": list(spec.inputs.required),
+            "optional": list(spec.inputs.optional),
+        },
+        "implementation": {
+            "backend": spec.implementation.backend,
+            "protocol": spec.implementation.protocol,
+            "model": spec.implementation.model,
+            "backend_version": spec.implementation.backend_version,
+            "model_revision": spec.implementation.model_revision,
+        },
+        "aggregation": list(spec.aggregation),
+        "dependencies": list(spec.dependencies),
+        "citations": list(spec.citations),
+        "docs_path": spec.docs_path,
+    }
+
+
+def _is_list_command(args: list[str]) -> bool:
+    if not args:
+        return False
+    first = args[0].lower().strip()
+    if first == "list":
+        return True
+    if (
+        first == "metrics"
+        and len(args) > 1
+        and args[1].lower().strip() == "list"
+    ):
+        return True
+    if "--list-metrics" in args or "--list" in args:
+        return True
+    return False
+
+
+def _is_show_command(args: list[str]) -> bool:
+    if not args:
+        return False
+    first = args[0].lower().strip()
+    if first == "show":
+        return True
+    if (
+        first == "metrics"
+        and len(args) > 1
+        and args[1].lower().strip() == "show"
+    ):
+        return True
+    if "--show-metric" in args or "--show" in args:
+        return True
+    return False
+
+
+def _extract_list_args(args: list[str]) -> list[str]:
+    res = list(args)
+    if res and res[0].lower().strip() == "list":
+        return res[1:]
+    if len(res) > 1 and res[0].lower().strip() == "metrics":
+        if res[1].lower().strip() == "list":
+            return res[2:]
+    if "--list-metrics" in res:
+        res.remove("--list-metrics")
+    elif "--list" in res:
+        res.remove("--list")
+    return res
+
+
+def _extract_show_args(args: list[str]) -> list[str]:
+    res = list(args)
+    if res and res[0].lower().strip() == "show":
+        return res[1:]
+    if len(res) > 1 and res[0].lower().strip() == "metrics":
+        if res[1].lower().strip() == "show":
+            return res[2:]
+    if "--show-metric" in res:
+        res.remove("--show-metric")
+    elif "--show" in res:
+        res.remove("--show")
+    return res
+
+
+def _handle_list(cmd_args: list[str]) -> list[dict[str, Any]]:
+    parser = argparse.ArgumentParser(
+        prog="image-evaluator list",
+        description=(
+            "List registered metrics with optional task and objective filters."
+        ),
+    )
+    parser.add_argument(
+        "--task",
+        "-t",
+        type=str,
+        default=None,
+        help="Filter by task (e.g. text_to_image, image_editing).",
+    )
+    parser.add_argument(
+        "--objective",
+        "-o",
+        type=str,
+        default=None,
+        help="Filter by objective (e.g. fidelity, alignment, quality).",
+    )
+    parser.add_argument(
+        "--format",
+        "-f",
+        choices=["text", "json"],
+        default="text",
+        help="Output format: 'text' (default) or 'json'.",
+    )
+
+    parsed = parser.parse_args(cmd_args)
+    specs = filter_metrics(task=parsed.task, objective=parsed.objective)
+
+    if parsed.format == "json":
+        data = [_spec_to_dict(s) for s in specs]
+        print(json.dumps(data, indent=2))
+        return data
+
+    if not specs:
+        filters = []
+        if parsed.task:
+            filters.append(f"task='{parsed.task}'")
+        if parsed.objective:
+            filters.append(f"objective='{parsed.objective}'")
+        filt_desc = f" matching {', '.join(filters)}" if filters else ""
+        print(f"No metrics found{filt_desc}.")
+        return []
+
+    filt_info = ""
+    if parsed.task and parsed.objective:
+        filt_info = f", task='{parsed.task}', objective='{parsed.objective}'"
+    elif parsed.task:
+        filt_info = f", task='{parsed.task}'"
+    elif parsed.objective:
+        filt_info = f", objective='{parsed.objective}'"
+
+    print(f"Available Evaluation Metrics ({len(specs)} total{filt_info}):")
+    header = (
+        f"{'ID':<18} {'Display Name':<32} {'Direction':<10} {'Inputs':<30}"
+    )
+    print(header)
+    print("-" * len(header))
+    for s in specs:
+        dir_str = (
+            "higher" if s.score_direction == "higher_is_better" else "lower"
+        )
+        reqs = ", ".join(s.inputs.required)
+        print(f"{s.id:<18} {s.display_name:<32} {dir_str:<10} {reqs:<30}")
+
+    return [_spec_to_dict(s) for s in specs]
+
+
+def _handle_show(cmd_args: list[str]) -> dict[str, Any]:
+    parser = argparse.ArgumentParser(
+        prog="image-evaluator show",
+        description="Show details of a registered metric specification.",
+    )
+    parser.add_argument("metric_id", type=str, help="Metric ID to inspect")
+    parser.add_argument(
+        "--format",
+        "-f",
+        choices=["text", "json"],
+        default="text",
+        help="Output format: 'text' (default) or 'json'.",
+    )
+
+    parsed = parser.parse_args(cmd_args)
+    try:
+        spec = get_metric(parsed.metric_id)
+    except LookupError:
+        available = sorted([s.id for s in list_metrics()])
+        raise CLIInputError(
+            f"Unknown metric '{parsed.metric_id}'. "
+            f"Available metrics: {available}"
+        )
+
+    data = _spec_to_dict(spec)
+    if parsed.format == "json":
+        print(json.dumps(data, indent=2))
+        return data
+
+    print(f"Metric: {spec.id}")
+    print(f"  Display Name:    {spec.display_name}")
+    print(f"  Score Direction: {spec.score_direction}")
+    print(f"  Tasks:           {', '.join(spec.tasks)}")
+    print(f"  Objectives:      {', '.join(spec.objectives)}")
+    print(f"  Required Inputs: {', '.join(spec.inputs.required)}")
+    opt = ", ".join(spec.inputs.optional) if spec.inputs.optional else "(none)"
+    print(f"  Optional Inputs: {opt}")
+    print(f"  Backend:         {spec.implementation.backend}")
+    print(f"  Protocol:        {spec.implementation.protocol}")
+    model = spec.implementation.model or "(none)"
+    print(f"  Model:           {model}")
+    docs = spec.docs_path or "(none)"
+    print(f"  Docs Path:       {docs}")
+    return data
+
+
 def main(args=None):
+    raw_args = list(sys.argv[1:]) if args is None else list(args)
+
+    if _is_list_command(raw_args):
+        return _handle_list(_extract_list_args(raw_args))
+
+    if _is_show_command(raw_args):
+        return _handle_show(_extract_show_args(raw_args))
+
     parser = argparse.ArgumentParser(
         description="Evaluate images using selected metrics."
     )

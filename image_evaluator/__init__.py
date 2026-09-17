@@ -5,10 +5,12 @@ image generation evaluation toolkit.
 import importlib
 from typing import Any
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 _EXPORTS = {
     "evaluate": ("image_evaluator.core", "evaluate"),
+    "evaluate_detailed": ("image_evaluator.core", "evaluate_detailed"),
+    "EvaluationResult": ("image_evaluator.result", "EvaluationResult"),
     "SSIMPredictor": ("image_evaluator.ssim_predictor", "SSIMPredictor"),
     "PSNRPredictor": ("image_evaluator.psnr_predictor", "PSNRPredictor"),
     "LPIPSPredictor": ("image_evaluator.lpips_predictor", "LPIPSPredictor"),

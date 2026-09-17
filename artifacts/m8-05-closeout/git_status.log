@@ -1,0 +1,16 @@
+## develop
+ M CHANGELOG.md
+ M README.md
+ M image_evaluator/__init__.py
+ M image_evaluator/core.py
+ M image_evaluator/main.py
+ M pyproject.toml
+ M tests/test_api_evaluate.py
+ M tests/test_docs_examples.py
+?? artifacts/
+?? image_evaluator/registry.py
+?? image_evaluator/result.py
+?? image_evaluator/specifications.py
+?? tests/test_cli_registry.py
+?? tests/test_evaluation_result.py
+?? tests/test_metric_registry.py
