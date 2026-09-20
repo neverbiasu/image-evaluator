@@ -5,7 +5,7 @@ image generation evaluation toolkit.
 import importlib
 from typing import Any
 
-__version__ = "0.6.0"
+__version__ = "0.6.1"
 
 _EXPORTS = {
     "evaluate": ("image_evaluator.core", "evaluate"),

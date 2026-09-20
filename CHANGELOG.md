@@ -2,6 +2,15 @@
 
 All notable user-facing changes to `image-evaluator` are recorded here.
 
+## [0.6.1] - 2026-09-20
+
+### Fixed
+
+- Enforced strict `state_dict` key matching in ImageReward model loader, eliminating pooling layer discrepancy and asserting zero missing keys and strict whitelist for unmapped pretraining weights.
+- Added offline download gating and ModelAsset disclosure for ImageReward BERT tokenizer (`IMAGE_REWARD_TOKENIZER_ASSET`), preventing unauthorized network downloads.
+- Added dual ModelAsset tracking and download gating for VQAScore (`VQA_SCORE_TEXT_ASSET` and `VQA_SCORE_VISION_ASSET`), pinning `openai/clip-vit-large-patch14-336` revision to explicit commit SHA and accurately disclosing combined download footprint (~8.0 GB).
+- Standardized documentation filenames to `docs/clip-i.md` and `docs/clip.md`.
+
 ## [0.6.0] - 2026-09-20
 
 ### Added
