@@ -257,6 +257,14 @@ class PickScorePredictor:
                 "Prompt cannot be empty for PickScore evaluation."
             )
 
+        if os.path.isfile(prompt):
+            try:
+                with open(prompt, "r", encoding="utf-8") as f:
+                    prompt = f.read().strip()
+            except UnicodeDecodeError:
+                with open(prompt, "r", encoding="latin-1") as f:
+                    prompt = f.read().strip()
+
         if isinstance(image_path, (str, os.PathLike)):
             _validate_image_file(str(image_path))
             with Image.open(image_path) as img:
@@ -294,33 +302,21 @@ class PickScorePredictor:
 
         with torch.no_grad():
             image_features = model.get_image_features(**image_inputs)
-            if hasattr(image_features, "pooler_output") and isinstance(
-                image_features.pooler_output, torch.Tensor
-            ):
-                image_features = image_features.pooler_output
-
             text_features = model.get_text_features(**text_inputs)
-            if hasattr(text_features, "pooler_output") and isinstance(
-                text_features.pooler_output, torch.Tensor
-            ):
-                text_features = text_features.pooler_output
-
             logit_scale = model.logit_scale
 
-            return self.compute_score_from_features(
-                image_features=image_features,
-                text_features=text_features,
-                logit_scale=logit_scale,
-            )
+        return self.compute_score_from_features(
+            image_features, text_features, logit_scale
+        )
 
     def evaluate_folder(
-        self, folder_path: str, prompt: str
+        self, folder_path: str, prompt: str | list[str]
     ) -> PickScoreResult:
         """Evaluate PickScore for all images in folder against a prompt.
 
         Args:
             folder_path: Path to folder containing images.
-            prompt: Text prompt to evaluate each image against.
+            prompt: Text prompt, list of prompts, or path to prompt file.
 
         Returns:
             PickScoreResult: Summary containing mean score, individual scores,
@@ -330,20 +326,37 @@ class PickScorePredictor:
             ValueError: If prompt is empty or folder contains no valid images.
             FileNotFoundError: If folder does not exist.
         """
-        if not isinstance(prompt, str) or not prompt.strip():
-            raise ValueError(
-                "Prompt cannot be empty for PickScore evaluation."
-            )
-
         image_paths = _discover_and_validate_images(folder_path)
 
         # Pre-load model once for entire folder
         self._load_model()
 
+        if isinstance(prompt, list):
+            if len(prompt) != len(image_paths):
+                raise ValueError(
+                    f"Number of prompts ({len(prompt)}) does not match "
+                    f"number of images ({len(image_paths)})"
+                )
+            prompts = prompt
+        elif isinstance(prompt, str) and os.path.isfile(prompt):
+            with open(prompt, "r", encoding="utf-8") as f:
+                lines = [line.strip() for line in f if line.strip()]
+            if len(lines) == len(image_paths):
+                prompts = lines
+            else:
+                prompt_text = " ".join(lines) if lines else prompt
+                prompts = [prompt_text] * len(image_paths)
+        else:
+            if not isinstance(prompt, str) or not prompt.strip():
+                raise ValueError(
+                    "Prompt cannot be empty for PickScore evaluation."
+                )
+            prompts = [prompt] * len(image_paths)
+
         scores: dict[str, float] = {}
-        for p in image_paths:
+        for p, pr in zip(image_paths, prompts):
             fname = os.path.basename(p)
-            scores[fname] = self.evaluate(p, prompt)
+            scores[fname] = self.evaluate(p, pr)
 
         mean_val = float(np.mean(list(scores.values())))
 

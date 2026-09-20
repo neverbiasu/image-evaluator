@@ -25,7 +25,7 @@ HPSV2_ASSET = ModelAsset(
     metric_id="hpsv2",
     model_id="xswu/HPSv2",
     source="huggingface",
-    revision="v2.1",
+    revision="697403c",
     estimated_download_bytes=1972490005,
     install_extra="preference",
 )
@@ -59,7 +59,11 @@ def _get_hpsv2_cached_path() -> str | None:
     try:
         from huggingface_hub import try_to_load_from_cache
 
-        p = try_to_load_from_cache("xswu/HPSv2", "HPS_v2.1_compressed.pt")
+        p = try_to_load_from_cache(
+            "xswu/HPSv2",
+            "HPS_v2.1_compressed.pt",
+            revision=HPSV2_ASSET.revision,
+        )
         if isinstance(p, str) and os.path.exists(p):
             return p
     except Exception:
@@ -126,6 +130,7 @@ class Hpsv2Predictor:
             cp_path = hf_hub_download(
                 repo_id="xswu/HPSv2",
                 filename="HPS_v2.1_compressed.pt",
+                revision=HPSV2_ASSET.revision,
             )
 
         model, _, preprocess = open_clip.create_model_and_transforms(
@@ -134,29 +139,22 @@ class Hpsv2Predictor:
             output_dict=True,
         )
 
-        checkpoint = torch.load(
-            cp_path,  # type: ignore[arg-type]
-            map_location=self.device,
-            weights_only=True,
-        )
-        state_dict = (
-            checkpoint["state_dict"]
-            if isinstance(checkpoint, dict) and "state_dict" in checkpoint
-            else checkpoint
-        )
-        model.load_state_dict(state_dict)
+        state_dict = torch.load(cp_path, map_location="cpu")
+        if "state_dict" in state_dict:
+            state_dict = state_dict["state_dict"]
 
-        model = model.to(self.device)
+        model.load_state_dict(state_dict, strict=True)
+        model.to(self.device)
         model.eval()
 
         self._model = model
         self._preprocess = preprocess
         self._tokenizer = open_clip.get_tokenizer("ViT-H-14")
+        self._loaded = True
 
     def _prepare_image(self, image: Any) -> torch.Tensor:
-        """Normalize supported input image representations to model tensor."""
+        """Convert input image into preprocessed tensor for ViT-H-14."""
         self._ensure_loaded()
-
         if isinstance(image, (str, os.PathLike)):
             img_path = str(image)
             if not os.path.exists(img_path):
@@ -165,14 +163,14 @@ class Hpsv2Predictor:
                 raise ValueError(
                     f"Expected single image file, got directory: '{img_path}'"
                 )
-            with Image.open(img_path) as img:
-                pil_img = img.convert("RGB")
-                tensor = self._preprocess(pil_img).unsqueeze(0)
+            with Image.open(img_path) as pil_img:
+                img_rgb = pil_img.convert("RGB")
+                tensor = self._preprocess(img_rgb).unsqueeze(0)
                 return tensor.to(self.device)
 
         if isinstance(image, Image.Image):
-            pil_img = image.convert("RGB")
-            tensor = self._preprocess(pil_img).unsqueeze(0)
+            img_rgb = image.convert("RGB")
+            tensor = self._preprocess(img_rgb).unsqueeze(0)
             return tensor.to(self.device)
 
         if isinstance(image, np.ndarray):
@@ -207,6 +205,14 @@ class Hpsv2Predictor:
         if not isinstance(prompt, str) or not prompt.strip():
             raise ValueError("Prompt must be a non-empty string.")
 
+        if os.path.isfile(prompt):
+            try:
+                with open(prompt, "r", encoding="utf-8") as f:
+                    prompt = f.read().strip()
+            except UnicodeDecodeError:
+                with open(prompt, "r", encoding="latin-1") as f:
+                    prompt = f.read().strip()
+
         self._ensure_loaded()
         img_tensor = self._prepare_image(image)
         tokens = self._tokenizer([prompt]).to(self.device)
@@ -226,7 +232,9 @@ class Hpsv2Predictor:
         """Alias for compute_hpsv2."""
         return self.compute_hpsv2(image=image, prompt=prompt)
 
-    def evaluate_folder_hpsv2(self, image_dir: str, prompt: str) -> float:
+    def evaluate_folder_hpsv2(
+        self, image_dir: str, prompt: str | list[str]
+    ) -> float:
         """Evaluate arithmetic mean HPS v2.1 score across images in folder."""
         if not os.path.exists(image_dir):
             raise FileNotFoundError(f"Directory not found: '{image_dir}'")
@@ -247,9 +255,35 @@ class Hpsv2Predictor:
                 f"No supported image files found in '{image_dir}'"
             )
 
-        scores = [
-            self.compute_hpsv2(image=p, prompt=prompt) for p in image_paths
-        ]
+        if isinstance(prompt, list):
+            if len(prompt) != len(image_paths):
+                raise ValueError(
+                    f"Number of prompts ({len(prompt)}) does not match "
+                    f"number of images ({len(image_paths)}) in '{image_dir}'"
+                )
+            scores = [
+                self.compute_hpsv2(image=p, prompt=pr)
+                for p, pr in zip(image_paths, prompt)
+            ]
+        elif isinstance(prompt, str) and os.path.isfile(prompt):
+            with open(prompt, "r", encoding="utf-8") as f:
+                lines = [line.strip() for line in f if line.strip()]
+            if len(lines) == len(image_paths):
+                scores = [
+                    self.compute_hpsv2(image=p, prompt=pr)
+                    for p, pr in zip(image_paths, lines)
+                ]
+            else:
+                prompt_text = " ".join(lines) if lines else prompt
+                scores = [
+                    self.compute_hpsv2(image=p, prompt=prompt_text)
+                    for p in image_paths
+                ]
+        else:
+            scores = [
+                self.compute_hpsv2(image=p, prompt=prompt)
+                for p in image_paths
+            ]
         return float(np.mean(scores))
 
 

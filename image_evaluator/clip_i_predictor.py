@@ -38,7 +38,7 @@ def _is_clip_i_cached(
     model_name: str = "ViT-L-14-quickgelu",
     pretrained: str = "openai",
 ) -> bool:
-    """Check if model weights are cached locally in HF or clip cache."""
+    """Check if model weights are cached locally without network calls."""
     try:
         cfg = open_clip.pretrained.get_pretrained_cfg(model_name, pretrained)
         if not cfg:
@@ -47,8 +47,27 @@ def _is_clip_i_cached(
             )
         if not cfg:
             return False
-        path = open_clip.pretrained.download_pretrained(cfg)
-        return bool(path and os.path.exists(path))
+
+        if "file" in cfg:
+            return bool(os.path.exists(cfg["file"]))
+
+        url = cfg.get("url", "")
+        if url:
+            filename = os.path.basename(url)
+            cache_dir = os.path.expanduser("~/.cache/clip")
+            target = os.path.join(cache_dir, filename)
+            return bool(os.path.isfile(target))
+
+        hf_hub = cfg.get("hf_hub", "")
+        if hf_hub:
+            from huggingface_hub import try_to_load_from_cache
+
+            model_id, filename = os.path.split(hf_hub)
+            filename = filename or "open_clip_pytorch_model.bin"
+            cached = try_to_load_from_cache(model_id, filename)
+            return bool(isinstance(cached, str) and os.path.exists(cached))
+
+        return False
     except Exception:
         return False
 

@@ -68,7 +68,9 @@ def _get_vqascore_cached_paths() -> tuple[str | None, str | None]:
 
             if xl_path is None:
                 p1 = try_to_load_from_cache(
-                    "zhiqiulin/clip-flant5-xl", "pytorch_model.bin"
+                    "zhiqiulin/clip-flant5-xl",
+                    "pytorch_model.bin",
+                    revision=VQA_SCORE_ASSET.revision,
                 )
                 if isinstance(p1, str) and os.path.exists(p1):
                     xl_path = os.path.dirname(p1)
@@ -441,6 +443,7 @@ class VQAScorePredictor:
             if xl_path is None or not os.path.exists(xl_path):
                 xl_path = snapshot_download(
                     "zhiqiulin/clip-flant5-xl",
+                    revision=VQA_SCORE_ASSET.revision,
                     ignore_patterns=[
                         "*.msgpack",
                         "*.h5",
@@ -457,6 +460,7 @@ class VQAScorePredictor:
             if xl_path is None or not os.path.exists(xl_path):
                 xl_path = snapshot_download(
                     "zhiqiulin/clip-flant5-xl",
+                    revision=VQA_SCORE_ASSET.revision,
                     ignore_patterns=[
                         "*.msgpack",
                         "*.h5",
@@ -581,6 +585,14 @@ class VQAScorePredictor:
         if not isinstance(prompt, str) or not prompt.strip():
             raise ValueError("Prompt must be a non-empty string.")
 
+        if os.path.isfile(prompt):
+            try:
+                with open(prompt, "r", encoding="utf-8") as f:
+                    prompt = f.read().strip()
+            except UnicodeDecodeError:
+                with open(prompt, "r", encoding="latin-1") as f:
+                    prompt = f.read().strip()
+
         self._ensure_loaded()
         pixel_values = self._prepare_image(image)
 
@@ -622,7 +634,9 @@ class VQAScorePredictor:
         """Alias for compute_vqascore."""
         return self.compute_vqascore(image=image, prompt=prompt)
 
-    def evaluate_folder_vqascore(self, image_dir: str, prompt: str) -> float:
+    def evaluate_folder_vqascore(
+        self, image_dir: str, prompt: str | list[str]
+    ) -> float:
         """Evaluate arithmetic mean VQAScore across images in directory."""
         if not os.path.exists(image_dir):
             raise FileNotFoundError(f"Directory not found: '{image_dir}'")
@@ -643,10 +657,35 @@ class VQAScorePredictor:
                 f"No supported image files found in '{image_dir}'"
             )
 
-        scores = [
-            self.compute_vqascore(image=p, prompt=prompt)
-            for p in image_paths
-        ]
+        if isinstance(prompt, list):
+            if len(prompt) != len(image_paths):
+                raise ValueError(
+                    f"Number of prompts ({len(prompt)}) does not match "
+                    f"number of images ({len(image_paths)}) in '{image_dir}'"
+                )
+            scores = [
+                self.compute_vqascore(image=p, prompt=pr)
+                for p, pr in zip(image_paths, prompt)
+            ]
+        elif isinstance(prompt, str) and os.path.isfile(prompt):
+            with open(prompt, "r", encoding="utf-8") as f:
+                lines = [line.strip() for line in f if line.strip()]
+            if len(lines) == len(image_paths):
+                scores = [
+                    self.compute_vqascore(image=p, prompt=pr)
+                    for p, pr in zip(image_paths, lines)
+                ]
+            else:
+                prompt_text = " ".join(lines) if lines else prompt
+                scores = [
+                    self.compute_vqascore(image=p, prompt=prompt_text)
+                    for p in image_paths
+                ]
+        else:
+            scores = [
+                self.compute_vqascore(image=p, prompt=prompt)
+                for p in image_paths
+            ]
         return float(np.mean(scores))
 
 

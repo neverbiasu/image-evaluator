@@ -12,8 +12,10 @@ Verifies:
 """
 
 import json
+from typing import Any
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 import torch
 from PIL import Image
@@ -28,10 +30,41 @@ from image_evaluator.main import cli
 from image_evaluator.model_assets import DownloadNotAllowedError
 
 
-@pytest.fixture(scope="module")
+class DummyClipModel(torch.nn.Module):
+    def eval(self):
+        return self
+
+    def encode_image(
+        self, tensor: torch.Tensor, normalize: bool = True
+    ) -> torch.Tensor:
+        batch = tensor.shape[0]
+        val = tensor.mean(dim=(-2, -1))
+        feat = torch.zeros(batch, 768)
+        feat[:, :3] = val
+        feat[:, 3] = 1.0
+        if normalize:
+            feat = feat / (feat.norm(dim=-1, keepdim=True) + 1e-8)
+        return feat
+
+
+def dummy_preprocess(img: Any) -> torch.Tensor:
+    if isinstance(img, torch.Tensor):
+        return img
+    arr = np.array(img).astype(np.float32) / 255.0
+    return torch.from_numpy(arr).permute(2, 0, 1)
+
+
+@pytest.fixture
 def predictor() -> ClipIPredictor:
-    """Module-scoped predictor reusing cached model weights."""
-    return ClipIPredictor(device="cpu")
+    """Predictor using DummyClipModel for offline deterministic tests."""
+    with patch(
+        "image_evaluator.clip_i_predictor._is_clip_i_cached",
+        return_value=True,
+    ), patch(
+        "open_clip.create_model_and_transforms",
+        return_value=(DummyClipModel(), None, dummy_preprocess),
+    ):
+        return ClipIPredictor(device="cpu")
 
 
 @pytest.fixture
@@ -143,24 +176,38 @@ def test_download_gating_uncached_with_allow_download_discloses():
 
 def test_core_evaluate_integration(sample_images):
     """High-level evaluate() dispatches clip_i correctly."""
-    result = evaluate(
-        metrics="clip_i",
-        image=sample_images["img1"],
-        reference=sample_images["img1"],
-        device="cpu",
-    )
+    with patch(
+        "image_evaluator.clip_i_predictor._is_clip_i_cached",
+        return_value=True,
+    ), patch(
+        "open_clip.create_model_and_transforms",
+        return_value=(DummyClipModel(), None, dummy_preprocess),
+    ):
+        result = evaluate(
+            metrics="clip_i",
+            image=sample_images["img1"],
+            reference=sample_images["img1"],
+            device="cpu",
+        )
     assert "clip_i" in result
     assert result["clip_i"] == pytest.approx(1.0, abs=1e-3)
 
 
 def test_core_evaluate_detailed_integration(sample_images):
     """evaluate_detailed() packages clip_i score and metric spec."""
-    result = evaluate_detailed(
-        metrics=["clip_i"],
-        image=sample_images["path1"],
-        reference=sample_images["path1"],
-        device="cpu",
-    )
+    with patch(
+        "image_evaluator.clip_i_predictor._is_clip_i_cached",
+        return_value=True,
+    ), patch(
+        "open_clip.create_model_and_transforms",
+        return_value=(DummyClipModel(), None, dummy_preprocess),
+    ):
+        result = evaluate_detailed(
+            metrics=["clip_i"],
+            image=sample_images["path1"],
+            reference=sample_images["path1"],
+            device="cpu",
+        )
     assert result["clip_i"] == pytest.approx(1.0, abs=1e-3)
     assert "clip_i" in result.specs
     assert result.specs["clip_i"].tasks == (
@@ -179,16 +226,23 @@ def test_core_evaluate_missing_reference_raises(sample_images):
 
 def test_cli_execution_text(sample_images, capsys):
     """CLI evaluates clip_i and prints text result."""
-    code = cli(
-        [
-            "--metrics",
-            "clip_i",
-            "--image",
-            sample_images["path1"],
-            "--reference",
-            sample_images["path1"],
-        ]
-    )
+    with patch(
+        "image_evaluator.clip_i_predictor._is_clip_i_cached",
+        return_value=True,
+    ), patch(
+        "open_clip.create_model_and_transforms",
+        return_value=(DummyClipModel(), None, dummy_preprocess),
+    ):
+        code = cli(
+            [
+                "--metrics",
+                "clip_i",
+                "--image",
+                sample_images["path1"],
+                "--reference",
+                sample_images["path1"],
+            ]
+        )
     assert code == 0
     captured = capsys.readouterr()
     assert "CLIP-I Similarity:" in captured.out
@@ -196,18 +250,25 @@ def test_cli_execution_text(sample_images, capsys):
 
 def test_cli_execution_json(sample_images, capsys):
     """CLI evaluates clip_i and outputs structured JSON."""
-    code = cli(
-        [
-            "--metrics",
-            "clip_i",
-            "--image",
-            sample_images["path1"],
-            "--reference",
-            sample_images["path1"],
-            "--format",
-            "json",
-        ]
-    )
+    with patch(
+        "image_evaluator.clip_i_predictor._is_clip_i_cached",
+        return_value=True,
+    ), patch(
+        "open_clip.create_model_and_transforms",
+        return_value=(DummyClipModel(), None, dummy_preprocess),
+    ):
+        code = cli(
+            [
+                "--metrics",
+                "clip_i",
+                "--image",
+                sample_images["path1"],
+                "--reference",
+                sample_images["path1"],
+                "--format",
+                "json",
+            ]
+        )
     assert code == 0
     captured = capsys.readouterr()
     data = json.loads(captured.out)

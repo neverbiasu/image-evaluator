@@ -100,6 +100,14 @@ class DirectionalClipPredictor:
 
     def _get_text_features(self, text: str) -> torch.Tensor:
         """Encode a text prompt into a unit-norm CLIP embedding."""
+        if os.path.isfile(text):
+            try:
+                with open(text, "r", encoding="utf-8") as f:
+                    text = f.read().strip()
+            except UnicodeDecodeError:
+                with open(text, "r", encoding="latin-1") as f:
+                    text = f.read().strip()
+
         inputs = self.tokenizer(
             text,
             padding=True,

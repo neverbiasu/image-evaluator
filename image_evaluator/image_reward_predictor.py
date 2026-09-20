@@ -34,7 +34,7 @@ IMAGE_REWARD_ASSET = ModelAsset(
     metric_id="image_reward",
     model_id="THUDM/ImageReward",
     source="huggingface",
-    revision="v1.0",
+    revision="5736be0",
     estimated_download_bytes=1786880927,
     install_extra="preference",
 )
@@ -74,7 +74,11 @@ def _get_image_reward_cached_path() -> str | None:
     try:
         from huggingface_hub import try_to_load_from_cache
 
-        p = try_to_load_from_cache("THUDM/ImageReward", "ImageReward.pt")
+        p = try_to_load_from_cache(
+            "THUDM/ImageReward",
+            "ImageReward.pt",
+            revision=IMAGE_REWARD_ASSET.revision,
+        )
         if isinstance(p, str) and os.path.exists(p):
             return p
     except Exception:
@@ -215,6 +219,7 @@ class ImageRewardPredictor:
             cp_path = hf_hub_download(
                 repo_id="THUDM/ImageReward",
                 filename="ImageReward.pt",
+                revision=IMAGE_REWARD_ASSET.revision,
             )
 
         # 1. Instantiate visual encoder (ViT-large, 224x224)
@@ -340,6 +345,14 @@ class ImageRewardPredictor:
         if not isinstance(prompt, str) or not prompt.strip():
             raise ValueError("Prompt must be a non-empty string.")
 
+        if os.path.isfile(prompt):
+            try:
+                with open(prompt, "r", encoding="utf-8") as f:
+                    prompt = f.read().strip()
+            except UnicodeDecodeError:
+                with open(prompt, "r", encoding="latin-1") as f:
+                    prompt = f.read().strip()
+
         self._ensure_loaded()
         img_tensor = self._prepare_image(image)
         text_inputs = self._tokenizer(
@@ -362,7 +375,7 @@ class ImageRewardPredictor:
         return self.compute_image_reward(image=image, prompt=prompt)
 
     def evaluate_folder_image_reward(
-        self, image_dir: str, prompt: str
+        self, image_dir: str, prompt: str | list[str]
     ) -> float:
         """Evaluate arithmetic mean ImageReward score for images in folder."""
         if not os.path.exists(image_dir):
@@ -384,10 +397,35 @@ class ImageRewardPredictor:
                 f"No supported image files found in '{image_dir}'"
             )
 
-        scores = [
-            self.compute_image_reward(image=p, prompt=prompt)
-            for p in image_paths
-        ]
+        if isinstance(prompt, list):
+            if len(prompt) != len(image_paths):
+                raise ValueError(
+                    f"Number of prompts ({len(prompt)}) does not match "
+                    f"number of images ({len(image_paths)}) in '{image_dir}'"
+                )
+            scores = [
+                self.compute_image_reward(image=p, prompt=pr)
+                for p, pr in zip(image_paths, prompt)
+            ]
+        elif isinstance(prompt, str) and os.path.isfile(prompt):
+            with open(prompt, "r", encoding="utf-8") as f:
+                lines = [line.strip() for line in f if line.strip()]
+            if len(lines) == len(image_paths):
+                scores = [
+                    self.compute_image_reward(image=p, prompt=pr)
+                    for p, pr in zip(image_paths, lines)
+                ]
+            else:
+                prompt_text = " ".join(lines) if lines else prompt
+                scores = [
+                    self.compute_image_reward(image=p, prompt=prompt_text)
+                    for p in image_paths
+                ]
+        else:
+            scores = [
+                self.compute_image_reward(image=p, prompt=prompt)
+                for p in image_paths
+            ]
         return float(np.mean(scores))
 
 

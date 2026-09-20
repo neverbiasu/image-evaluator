@@ -1,5 +1,6 @@
 import argparse
 import contextlib
+import gc
 import json
 import math
 import os
@@ -544,6 +545,40 @@ def main(args=None):
 
 
     is_folder = os.path.isdir(parsed_args.image)
+
+    def _release_cli_memory() -> None:
+        gc.collect()
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except ImportError:
+            pass
+
+    if (
+        parsed_args.prompt is not None
+        and not is_folder
+        and os.path.isfile(parsed_args.prompt)
+    ):
+        try:
+            with open(parsed_args.prompt, "r", encoding="utf-8") as f:
+                parsed_args.prompt = f.read().strip()
+        except UnicodeDecodeError:
+            with open(parsed_args.prompt, "r", encoding="latin-1") as f:
+                parsed_args.prompt = f.read().strip()
+
+    if (
+        parsed_args.prompt_src is not None
+        and os.path.isfile(parsed_args.prompt_src)
+    ):
+        try:
+            with open(parsed_args.prompt_src, "r", encoding="utf-8") as f:
+                parsed_args.prompt_src = f.read().strip()
+        except UnicodeDecodeError:
+            with open(parsed_args.prompt_src, "r", encoding="latin-1") as f:
+                parsed_args.prompt_src = f.read().strip()
+
     results = {
         "status": "success",
         "metrics": {},
@@ -607,6 +642,8 @@ def main(args=None):
                     )
                 )
             results["metrics"]["clip_i"] = clip_i_score
+            del clip_i_predictor
+            _release_cli_memory()
             if parsed_args.format == "text":
                 print(f"CLIP-I Similarity: {clip_i_score}")
 
@@ -628,6 +665,8 @@ def main(args=None):
                     parsed_args.reference, parsed_args.image
                 )
             results["metrics"]["dino_similarity"] = dino_score
+            del dino_predictor
+            _release_cli_memory()
             if parsed_args.format == "text":
                 print(f"DINOv2 Similarity: {dino_score}")
 
@@ -815,6 +854,8 @@ def main(args=None):
                     parsed_args.image, parsed_args.prompt
                 )
             results["metrics"]["hpsv2"] = hps_score
+            del hps_predictor
+            _release_cli_memory()
             if parsed_args.format == "text":
                 print(f"HPS v2.1: {hps_score}")
 
@@ -836,6 +877,8 @@ def main(args=None):
                     parsed_args.image, parsed_args.prompt
                 )
             results["metrics"]["image_reward"] = ir_score
+            del ir_predictor
+            _release_cli_memory()
             if parsed_args.format == "text":
                 print(f"ImageReward: {ir_score}")
 
@@ -856,6 +899,8 @@ def main(args=None):
                     parsed_args.image, parsed_args.prompt
                 )
             results["metrics"]["vqascore"] = vqa_score
+            del vqa_predictor
+            _release_cli_memory()
             if parsed_args.format == "text":
                 print(f"VQAScore: {vqa_score}")
 

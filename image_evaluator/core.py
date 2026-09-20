@@ -1,3 +1,4 @@
+import gc
 import os
 import time
 from collections.abc import Sequence
@@ -327,6 +328,11 @@ def evaluate(
             )
         )
 
+    def _release_eval_memory() -> None:
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
     # 11. CLIP-I
     if "clip_i" in selected:
         from image_evaluator.clip_i_predictor import ClipIPredictor
@@ -344,6 +350,8 @@ def evaluate(
             results["clip_i"] = pred_clip_i.evaluate_clip_i(
                 reference, image
             )
+        del pred_clip_i
+        _release_eval_memory()
 
     # 12. DINO Similarity
     if "dino_similarity" in selected:
@@ -366,6 +374,8 @@ def evaluate(
             results["dino_similarity"] = pred_dino.evaluate_dino_similarity(
                 reference, image
             )
+        del pred_dino
+        _release_eval_memory()
 
     # 13. HPS v2.1
     if "hpsv2" in selected:
@@ -384,6 +394,8 @@ def evaluate(
             results["hpsv2"] = pred_hps.evaluate_hpsv2(
                 image, prompt  # type: ignore[arg-type]
             )
+        del pred_hps
+        _release_eval_memory()
 
     # 14. ImageReward
     if "image_reward" in selected:
@@ -404,6 +416,8 @@ def evaluate(
             results["image_reward"] = pred_ir.evaluate_image_reward(
                 image, prompt  # type: ignore[arg-type]
             )
+        del pred_ir
+        _release_eval_memory()
 
     # 15. VQAScore
     if "vqascore" in selected:
@@ -424,6 +438,8 @@ def evaluate(
             results["vqascore"] = pred_vqa.evaluate_vqascore(
                 image, prompt  # type: ignore[arg-type]
             )
+        del pred_vqa
+        _release_eval_memory()
 
     if detailed:
         duration_seconds = max(0.0, time.perf_counter() - start_time)

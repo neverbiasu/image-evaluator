@@ -24,19 +24,36 @@ DINO_SIMILARITY_ASSET = ModelAsset(
     metric_id="dino_similarity",
     model_id="facebook/dinov2-base",
     source="huggingface",
-    revision="f9e44c8",
+    revision="f9e44c814b77203eaa57a6bdbbd535f21ede1415",
     estimated_download_bytes=345942474,
     install_extra=None,
 )
 
 
-def _is_dinov2_cached(model_id: str = "facebook/dinov2-base") -> bool:
-    """Check if model weights are cached locally in Hugging Face cache."""
+def _is_dinov2_cached(
+    model_id: str = "facebook/dinov2-base",
+    revision: str | None = "f9e44c8",
+) -> bool:
+    """Check if model weights and configs are cached locally in HF cache."""
     try:
         from huggingface_hub import try_to_load_from_cache
 
-        path = try_to_load_from_cache(model_id, "model.safetensors")
-        return bool(isinstance(path, str) and os.path.exists(path))
+        model_path = try_to_load_from_cache(
+            model_id, "model.safetensors", revision=revision
+        )
+        if not (isinstance(model_path, str) and os.path.exists(model_path)):
+            model_path = try_to_load_from_cache(
+                model_id, "pytorch_model.bin", revision=revision
+            )
+            if not (
+                isinstance(model_path, str) and os.path.exists(model_path)
+            ):
+                return False
+
+        proc_path = try_to_load_from_cache(
+            model_id, "preprocessor_config.json", revision=revision
+        )
+        return bool(isinstance(proc_path, str) and os.path.exists(proc_path))
     except Exception:
         return False
 
@@ -63,7 +80,9 @@ class DinoSimilarityPredictor:
 
         self.model_id = model_id
 
-        is_cached = _is_dinov2_cached(model_id)
+        is_cached = _is_dinov2_cached(
+            model_id, revision=DINO_SIMILARITY_ASSET.revision
+        )
         check_asset_and_permit_download(
             asset=DINO_SIMILARITY_ASSET,
             is_cached=is_cached,
@@ -75,10 +94,12 @@ class DinoSimilarityPredictor:
 
         self.processor = AutoImageProcessor.from_pretrained(
             model_id,
+            revision=DINO_SIMILARITY_ASSET.revision,
             local_files_only=not allow_download,
         )
         self.model = AutoModel.from_pretrained(
             model_id,
+            revision=DINO_SIMILARITY_ASSET.revision,
             local_files_only=not allow_download,
         )
         self.model.to(self.device)
