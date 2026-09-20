@@ -12,8 +12,11 @@ Verifies:
 """
 
 import json
+from contextlib import contextmanager
+from typing import Any
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 import torch
 from PIL import Image
@@ -28,10 +31,69 @@ from image_evaluator.main import cli
 from image_evaluator.model_assets import DownloadNotAllowedError
 
 
-@pytest.fixture(scope="module")
+class DummyDinoOutput:
+    def __init__(self, last_hidden_state: torch.Tensor) -> None:
+        self.last_hidden_state = last_hidden_state
+
+
+class DummyDinoModel(torch.nn.Module):
+    def eval(self):
+        return self
+
+    def to(self, device):
+        return self
+
+    def __call__(self, pixel_values: torch.Tensor) -> DummyDinoOutput:
+        batch = pixel_values.shape[0]
+        val = pixel_values.mean(dim=(-2, -1))
+        feat = torch.zeros(
+            batch, 1, 768, dtype=torch.float32, device=pixel_values.device
+        )
+        feat[:, 0, :3] = val
+        feat[:, 0, 3] = 1.0
+        return DummyDinoOutput(feat)
+
+
+class DummyDinoProcessor:
+    def __call__(
+        self, images: Any = None, return_tensors: str = "pt"
+    ) -> dict[str, torch.Tensor]:
+        if isinstance(images, torch.Tensor):
+            t = images
+        elif isinstance(images, Image.Image):
+            arr = np.array(images).astype(np.float32) / 255.0
+            t = torch.from_numpy(arr).permute(2, 0, 1)
+        elif isinstance(images, np.ndarray):
+            t = torch.from_numpy(images).float()
+            if t.ndim == 3 and t.shape[-1] in (1, 3):
+                t = t.permute(2, 0, 1)
+        else:
+            t = torch.zeros(3, 224, 224, dtype=torch.float32)
+        if t.ndim == 3:
+            t = t.unsqueeze(0)
+        return {"pixel_values": t}
+
+
+@contextmanager
+def mock_dinov2():
+    with patch(
+        "image_evaluator.dino_similarity_predictor._is_dinov2_cached",
+        return_value=True,
+    ), patch(
+        "transformers.AutoImageProcessor.from_pretrained",
+        return_value=DummyDinoProcessor(),
+    ), patch(
+        "transformers.AutoModel.from_pretrained",
+        return_value=DummyDinoModel(),
+    ):
+        yield
+
+
+@pytest.fixture
 def predictor() -> DinoSimilarityPredictor:
-    """Module-scoped predictor reusing cached model weights."""
-    return DinoSimilarityPredictor(device="cpu")
+    """Predictor using DummyDinoModel for offline deterministic tests."""
+    with mock_dinov2():
+        return DinoSimilarityPredictor(device="cpu")
 
 
 @pytest.fixture
@@ -151,24 +213,26 @@ def test_download_gating_uncached_with_allow_download_discloses():
 
 def test_core_evaluate_integration(sample_images):
     """High-level evaluate() dispatches dino_similarity correctly."""
-    result = evaluate(
-        metrics="dino_similarity",
-        image=sample_images["img1"],
-        reference=sample_images["img1"],
-        device="cpu",
-    )
+    with mock_dinov2():
+        result = evaluate(
+            metrics="dino_similarity",
+            image=sample_images["img1"],
+            reference=sample_images["img1"],
+            device="cpu",
+        )
     assert "dino_similarity" in result
     assert result["dino_similarity"] == pytest.approx(1.0, abs=1e-3)
 
 
 def test_core_evaluate_detailed_integration(sample_images):
     """evaluate_detailed() packages dino_similarity score and metric spec."""
-    result = evaluate_detailed(
-        metrics=["dino_similarity"],
-        image=sample_images["path1"],
-        reference=sample_images["path1"],
-        device="cpu",
-    )
+    with mock_dinov2():
+        result = evaluate_detailed(
+            metrics=["dino_similarity"],
+            image=sample_images["path1"],
+            reference=sample_images["path1"],
+            device="cpu",
+        )
     assert result["dino_similarity"] == pytest.approx(1.0, abs=1e-3)
     assert "dino_similarity" in result.specs
     assert result.specs["dino_similarity"].tasks == (
@@ -187,16 +251,17 @@ def test_core_evaluate_missing_reference_raises(sample_images):
 
 def test_cli_execution_text(sample_images, capsys):
     """CLI evaluates dino_similarity and prints text result."""
-    code = cli(
-        [
-            "--metrics",
-            "dino_similarity",
-            "--image",
-            sample_images["path1"],
-            "--reference",
-            sample_images["path1"],
-        ]
-    )
+    with mock_dinov2():
+        code = cli(
+            [
+                "--metrics",
+                "dino_similarity",
+                "--image",
+                sample_images["path1"],
+                "--reference",
+                sample_images["path1"],
+            ]
+        )
     assert code == 0
     captured = capsys.readouterr()
     assert "DINOv2 Similarity:" in captured.out
@@ -204,18 +269,19 @@ def test_cli_execution_text(sample_images, capsys):
 
 def test_cli_execution_json(sample_images, capsys):
     """CLI evaluates dino_similarity and outputs structured JSON."""
-    code = cli(
-        [
-            "--metrics",
-            "dino_similarity",
-            "--image",
-            sample_images["path1"],
-            "--reference",
-            sample_images["path1"],
-            "--format",
-            "json",
-        ]
-    )
+    with mock_dinov2():
+        code = cli(
+            [
+                "--metrics",
+                "dino_similarity",
+                "--image",
+                sample_images["path1"],
+                "--reference",
+                sample_images["path1"],
+                "--format",
+                "json",
+            ]
+        )
     assert code == 0
     captured = capsys.readouterr()
     data = json.loads(captured.out)
