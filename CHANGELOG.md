@@ -2,6 +2,51 @@
 
 All notable user-facing changes to `image-evaluator` are recorded here.
 
+## [0.6.0] - 2026-09-20
+
+### Added
+
+- Added five modern evaluation metrics, expanding the toolkit to 15 metrics:
+  - `clip_i`: CLIP image-to-image similarity using OpenCLIP ViT-L/14
+    QuickGELU for identity and subject preservation.
+  - `dino_similarity`: DINOv2-base CLS token cosine similarity for structure
+    and layout fidelity.
+  - `hpsv2`: Human Preference Score v2.1 using OpenCLIP ViT-H/14 for aesthetic
+    and text alignment preference.
+  - `image_reward`: ImageReward-v1.0 scalar reward modeling using BLIP text
+    encoder and ViT visual backbone with a 5-layer MLP.
+  - `vqascore`: VQAScore using CLIP-Flan-T5-XL 3B for compositionality and
+    complex question answering posterior probability.
+- Added optional dependency extras in `pyproject.toml`: `[vqa]` (accelerate,
+  sentencepiece), `[preference]` (timm), and `[modern]` (all modern extras).
+- Added `ModelAsset` download disclosure mechanism with fail-fast download
+  authorization (`--allow-download` via CLI, `allow_download=True` via Python
+  API) preventing unexpected multi-gigabyte downloads.
+- Added comprehensive documentation for all five modern metrics in `docs/`
+  (`clip-i-similarity.md`, `dino-similarity.md`, `hpsv2.md`, `image-reward.md`,
+  `vqascore.md`).
+- Added multi-metric combined regression and integration test coverage
+  (`tests/test_combined_modern_metrics.py`).
+
+### Changed
+
+- Updated toolkit version to 0.6.0 across package configuration, runtime
+  attributes, and test suite.
+- Re-architected model loading with explicit caching and lazy loading so
+  top-level imports and registry inspection remain instant (<20ms) with zero
+  heavy framework imports.
+- Updated `README.md` with complete 15-metric catalog, task/objective taxonomy,
+  download disclosure guidance, and CLI/Python SDK examples.
+
+### Fixed
+
+- Eliminated duplicate weights and memory bloat by extracting shared backbones
+  across predictors.
+- Isolated stderr progress reporting from clean RFC 8259 JSON serialization in
+  CLI pipelines.
+- Standardized all predictors on zero Disk I/O streaming for file paths,
+  `PIL.Image`, `np.ndarray`, and `torch.Tensor`.
+
 ## [0.5.0] - 2026-09-18
 
 ### Added

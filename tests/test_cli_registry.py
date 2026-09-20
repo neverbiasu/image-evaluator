@@ -10,13 +10,18 @@ from image_evaluator.main import cli, main
 
 
 def test_cli_list_text_default(capsys: pytest.CaptureFixture[str]) -> None:
-    """Verify default text list outputs all 10 registered metrics."""
+    """Verify default text list outputs all 15 registered metrics."""
     res = main(["list"])
     out = capsys.readouterr().out
     assert isinstance(res, list)
-    assert len(res) == 10
-    assert "Available Evaluation Metrics (10 total):" in out
+    assert len(res) == 15
+    assert "Available Evaluation Metrics (15 total):" in out
     assert "directional_clip" in out
+    assert "clip_i" in out
+    assert "dino_similarity" in out
+    assert "hpsv2" in out
+    assert "image_reward" in out
+    assert "vqascore" in out
     assert "ssim" in out
     assert "clip" in out
 
@@ -27,9 +32,14 @@ def test_cli_list_json(capsys: pytest.CaptureFixture[str]) -> None:
     out = capsys.readouterr().out
     data = json.loads(out)
     assert isinstance(data, list)
-    assert len(data) == 10
+    assert len(data) == 15
     metric_ids = {m["id"] for m in data}
     assert "directional_clip" in metric_ids
+    assert "clip_i" in metric_ids
+    assert "dino_similarity" in metric_ids
+    assert "hpsv2" in metric_ids
+    assert "image_reward" in metric_ids
+    assert "vqascore" in metric_ids
     assert "ssim" in metric_ids
     assert res == data
 
@@ -122,7 +132,7 @@ def test_cli_flag_aliases_parity(capsys: pytest.CaptureFixture[str]) -> None:
     """Verify --list-metrics and --show-metric flag forms match subcommand."""
     res_list = main(["--list-metrics", "--format", "json"])
     capsys.readouterr()
-    assert len(res_list) == 10
+    assert len(res_list) == 15
 
     res_show = main(["--show-metric", "lpips", "--format", "json"])
     capsys.readouterr()
@@ -135,7 +145,7 @@ def test_cli_metrics_subcommand_alias(
     """Verify 'metrics list' and 'metrics show' work as aliases."""
     res_list = main(["metrics", "list", "--format", "json"])
     capsys.readouterr()
-    assert len(res_list) == 10
+    assert len(res_list) == 15
 
     res_show = main(["metrics", "show", "clip", "--format", "json"])
     capsys.readouterr()

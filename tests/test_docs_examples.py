@@ -216,7 +216,7 @@ def test_readme_registry_programmatic_api_example():
     )
 
     all_metrics = list_metrics()
-    assert len(all_metrics) == 10
+    assert len(all_metrics) == 15
 
     editing_metrics = filter_metrics(task="image_editing")
     assert len(editing_metrics) >= 1
@@ -280,7 +280,7 @@ def test_readme_cli_discovery_examples():
     )
     assert proc_json.returncode == 0
     metrics_data = json.loads(proc_json.stdout)
-    assert len(metrics_data) == 10
+    assert len(metrics_data) == 15
 
     # 4. show directional_clip
     proc_show = subprocess.run(

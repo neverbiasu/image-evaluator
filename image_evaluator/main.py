@@ -1,5 +1,6 @@
 import argparse
 import contextlib
+import gc
 import json
 import math
 import os
@@ -9,6 +10,7 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
+from image_evaluator.model_assets import DownloadNotAllowedError
 from image_evaluator.registry import (
     filter_metrics,
     get_metric,
@@ -42,7 +44,14 @@ def _validate_runtime_inputs(
         )
 
     is_folder = os.path.isdir(parsed_args.image)
-    pairwise_metrics = {"arcface", "lpips", "ssim", "psnr"}
+    pairwise_metrics = {
+        "arcface",
+        "clip_i",
+        "dino_similarity",
+        "lpips",
+        "ssim",
+        "psnr",
+    }
     selected_pairwise = selected_metrics & pairwise_metrics
 
     if is_folder:
@@ -352,6 +361,8 @@ def main(args=None):
         choices=[
             "aesthetic",
             "clip",
+            "clip_i",
+            "dino_similarity",
             "arcface",
             "lpips",
             "ssim",
@@ -360,6 +371,9 @@ def main(args=None):
             "kid",
             "pickscore",
             "directional_clip",
+            "hpsv2",
+            "image_reward",
+            "vqascore",
         ],
         required=True,
         help="Metrics to evaluate",
@@ -376,7 +390,8 @@ def main(args=None):
         default=None,
         help=(
             "Path to the prompt file or text prompt "
-            "(required for 'clip' and 'pickscore')"
+            "(required for 'clip', 'pickscore', 'hpsv2', 'image_reward', "
+            "and 'vqascore')"
         ),
     )
     parser.add_argument(
@@ -385,7 +400,8 @@ def main(args=None):
         default=None,
         help=(
             "Path to reference image or folder "
-            "(required for 'arcface', 'lpips', 'ssim', 'psnr', 'fid', 'kid')"
+            "(required for 'arcface', 'clip_i', 'dino_similarity', 'lpips', "
+            "'ssim', 'psnr', 'fid', 'kid')"
         ),
     )
     parser.add_argument(
@@ -405,12 +421,28 @@ def main(args=None):
             "Describes the original image before editing."
         ),
     )
+    parser.add_argument(
+        "--allow-download",
+        action="store_true",
+        default=False,
+        help=(
+            "Allow downloading model weights from external sources if not "
+            "locally cached."
+        ),
+    )
     parsed_args = parser.parse_args(args)
 
     selected_metrics = set(parsed_args.metrics)
 
     # Validate dependent and prohibited options
-    prompt_metrics = {"clip", "pickscore", "directional_clip"}
+    prompt_metrics = {
+        "clip",
+        "pickscore",
+        "directional_clip",
+        "hpsv2",
+        "image_reward",
+        "vqascore",
+    }
     selected_prompt = selected_metrics & prompt_metrics
     if selected_prompt:
         if parsed_args.prompt is None or not parsed_args.prompt.strip():
@@ -428,7 +460,14 @@ def main(args=None):
             "--prompt was provided but no prompt-based metric was selected."
         )
 
-    pairwise_metrics = {"arcface", "lpips", "ssim", "psnr"}
+    pairwise_metrics = {
+        "arcface",
+        "clip_i",
+        "dino_similarity",
+        "lpips",
+        "ssim",
+        "psnr",
+    }
     reference_metrics = pairwise_metrics | {"fid", "kid", "directional_clip"}
     selected_reference = selected_metrics & reference_metrics
     selected_pairwise = selected_metrics & pairwise_metrics
@@ -506,6 +545,41 @@ def main(args=None):
 
 
     is_folder = os.path.isdir(parsed_args.image)
+
+    def _release_cli_memory() -> None:
+        gc.collect()
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except ImportError:
+            pass
+
+    if parsed_args.prompt is not None and os.path.isfile(parsed_args.prompt):
+        try:
+            with open(parsed_args.prompt, "r", encoding="utf-8") as f:
+                content = f.read()
+        except UnicodeDecodeError:
+            with open(parsed_args.prompt, "r", encoding="latin-1") as f:
+                content = f.read()
+        lines = [line.strip() for line in content.splitlines() if line.strip()]
+        if is_folder and len(lines) > 1:
+            parsed_args.prompt = lines
+        else:
+            parsed_args.prompt = content.strip()
+
+    if (
+        parsed_args.prompt_src is not None
+        and os.path.isfile(parsed_args.prompt_src)
+    ):
+        try:
+            with open(parsed_args.prompt_src, "r", encoding="utf-8") as f:
+                parsed_args.prompt_src = f.read().strip()
+        except UnicodeDecodeError:
+            with open(parsed_args.prompt_src, "r", encoding="latin-1") as f:
+                parsed_args.prompt_src = f.read().strip()
+
     results = {
         "status": "success",
         "metrics": {},
@@ -546,6 +620,56 @@ def main(args=None):
             results["metrics"]["clip"] = clip_score
             if parsed_args.format == "text":
                 print(f"CLIP Score: {clip_score}")
+
+        # CLIP-I Evaluation
+        if "clip_i" in selected_metrics:
+            from image_evaluator.clip_i_predictor import (
+                ClipIPredictor,
+            )
+
+            clip_i_predictor = ClipIPredictor(
+                allow_download=parsed_args.allow_download,
+            )
+            if is_folder:
+                clip_i_score = (
+                    clip_i_predictor.evaluate_folder_clip_i(
+                        parsed_args.reference, parsed_args.image
+                    )
+                )
+            else:
+                clip_i_score = (
+                    clip_i_predictor.evaluate_clip_i(
+                        parsed_args.reference, parsed_args.image
+                    )
+                )
+            results["metrics"]["clip_i"] = clip_i_score
+            del clip_i_predictor
+            _release_cli_memory()
+            if parsed_args.format == "text":
+                print(f"CLIP-I Similarity: {clip_i_score}")
+
+        # DINO Similarity Evaluation
+        if "dino_similarity" in selected_metrics:
+            from image_evaluator.dino_similarity_predictor import (
+                DinoSimilarityPredictor,
+            )
+
+            dino_predictor = DinoSimilarityPredictor(
+                allow_download=parsed_args.allow_download,
+            )
+            if is_folder:
+                dino_score = dino_predictor.evaluate_folder_dino_similarity(
+                    parsed_args.reference, parsed_args.image
+                )
+            else:
+                dino_score = dino_predictor.evaluate_dino_similarity(
+                    parsed_args.reference, parsed_args.image
+                )
+            results["metrics"]["dino_similarity"] = dino_score
+            del dino_predictor
+            _release_cli_memory()
+            if parsed_args.format == "text":
+                print(f"DINOv2 Similarity: {dino_score}")
 
         # ArcFace Distance Evaluation
         if "arcface" in selected_metrics:
@@ -713,6 +837,74 @@ def main(args=None):
             if parsed_args.format == "text":
                 print(f"Directional CLIP: {dir_clip_score}")
 
+        # HPS v2.1 Evaluation
+        if "hpsv2" in selected_metrics:
+            from image_evaluator.hpsv2_predictor import (
+                Hpsv2Predictor,
+            )
+
+            hps_predictor = Hpsv2Predictor(
+                allow_download=parsed_args.allow_download,
+            )
+            if is_folder:
+                hps_score = hps_predictor.evaluate_folder_hpsv2(
+                    parsed_args.image, parsed_args.prompt
+                )
+            else:
+                hps_score = hps_predictor.evaluate_hpsv2(
+                    parsed_args.image, parsed_args.prompt
+                )
+            results["metrics"]["hpsv2"] = hps_score
+            del hps_predictor
+            _release_cli_memory()
+            if parsed_args.format == "text":
+                print(f"HPS v2.1: {hps_score}")
+
+        # ImageReward Evaluation
+        if "image_reward" in selected_metrics:
+            from image_evaluator.image_reward_predictor import (
+                ImageRewardPredictor,
+            )
+
+            ir_predictor = ImageRewardPredictor(
+                allow_download=parsed_args.allow_download,
+            )
+            if is_folder:
+                ir_score = ir_predictor.evaluate_folder_image_reward(
+                    parsed_args.image, parsed_args.prompt
+                )
+            else:
+                ir_score = ir_predictor.evaluate_image_reward(
+                    parsed_args.image, parsed_args.prompt
+                )
+            results["metrics"]["image_reward"] = ir_score
+            del ir_predictor
+            _release_cli_memory()
+            if parsed_args.format == "text":
+                print(f"ImageReward: {ir_score}")
+
+        if "vqascore" in selected_metrics:
+            from image_evaluator.vqascore_predictor import (
+                VQAScorePredictor,
+            )
+
+            vqa_predictor = VQAScorePredictor(
+                allow_download=parsed_args.allow_download,
+            )
+            if is_folder:
+                vqa_score = vqa_predictor.evaluate_folder_vqascore(
+                    parsed_args.image, parsed_args.prompt
+                )
+            else:
+                vqa_score = vqa_predictor.evaluate_vqascore(
+                    parsed_args.image, parsed_args.prompt
+                )
+            results["metrics"]["vqascore"] = vqa_score
+            del vqa_predictor
+            _release_cli_memory()
+            if parsed_args.format == "text":
+                print(f"VQAScore: {vqa_score}")
+
     if parsed_args.format == "json":
         with contextlib.redirect_stdout(sys.stderr):
             _execute_metrics()
@@ -727,7 +919,7 @@ def main(args=None):
 def cli(args=None) -> int:
     try:
         main(args)
-    except CLIInputError as exc:
+    except (CLIInputError, DownloadNotAllowedError) as exc:
         print(f"image-evaluator: error: {exc}", file=sys.stderr)
         return 1
     return 0

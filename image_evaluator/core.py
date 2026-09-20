@@ -1,3 +1,4 @@
+import gc
 import os
 import time
 from collections.abc import Sequence
@@ -39,10 +40,12 @@ def evaluate(
     metrics: str | Sequence[str],
     image: Any,
     reference: Any = None,
-    prompt: str | None = None,
+    prompt: str | Sequence[str] | None = None,
     source_prompt: str | None = None,
     device: str | torch.device | None = None,
     detailed: bool = False,
+    allow_download: bool = False,
+    download_callback: Any = None,
     **kwargs: Any,
 ) -> dict[str, Any] | EvaluationResult:
     """Evaluate one or more metrics across image(s), references, or prompts.
@@ -54,12 +57,15 @@ def evaluate(
         metrics: Single metric name or collection of metric names.
         image: Evaluated image (path, PIL Image, or torch.Tensor).
         reference: Reference image or folder for pairwise/distribution metrics.
-        prompt: Text prompt string required for 'clip', 'pickscore', and
-            'directional_clip'.
+        prompt: Text prompt string, prompt file path, or sequence of prompts
+            required for 'clip', 'pickscore', 'hpsv2', 'image_reward',
+            'vqascore', and 'directional_clip'.
         source_prompt: Source prompt string required for 'directional_clip'.
         device: Computing device ('cuda', 'cpu', 'mps', or None for auto).
-        detailed: If True, return an EvaluationResult instance instead of a
+        detailed: If True, return EvaluationResult object; if False, return
             plain dict.
+        allow_download: If True, allow downloading uncached model weights.
+        download_callback: Optional callback(asset, msg) on download.
         **kwargs: Additional parameters passed to specific predictors.
 
     Returns:
@@ -93,7 +99,17 @@ def evaluate(
     # Validate prompt-based metrics
     selected_prompt = selected & PROMPT_METRICS
     if selected_prompt:
-        if prompt is None or not (isinstance(prompt, str) and prompt.strip()):
+        has_prompt = False
+        if isinstance(prompt, str) and prompt.strip():
+            has_prompt = True
+        elif isinstance(prompt, (list, tuple)) or (
+            isinstance(prompt, Sequence)
+            and not isinstance(prompt, (str, bytes))
+        ):
+            has_prompt = len(prompt) > 0 and all(
+                isinstance(p, str) and p.strip() for p in prompt
+            )
+        if not has_prompt:
             if len(selected_prompt) == 1:
                 single_metric = next(iter(selected_prompt))
                 raise ValueError(
@@ -192,6 +208,20 @@ def evaluate(
 
     results: dict[str, Any] = {}
 
+    single_prompt: str = ""
+    folder_prompt: str | Sequence[str] = ""
+    if prompt is not None:
+        folder_prompt = prompt
+        if isinstance(prompt, str):
+            single_prompt = prompt
+        elif isinstance(prompt, (list, tuple)) or (
+            isinstance(prompt, Sequence)
+            and not isinstance(prompt, (str, bytes))
+        ):
+            single_prompt = prompt[0] if len(prompt) > 0 else ""
+        else:
+            single_prompt = str(prompt)
+
     # 1. Aesthetic
     if "aesthetic" in selected:
         from image_evaluator.laion_ai_aesthetic_predictor import (
@@ -216,7 +246,9 @@ def evaluate(
 
         clip_model = kwargs.get("clip_model", "openai/clip-vit-base-patch32")
         pred_clip = ClipScorePredictor(clip_model=clip_model, device=device)
-        results["clip"] = pred_clip.evaluate_clip_score(image, prompt)
+        results["clip"] = pred_clip.evaluate_clip_score(
+            image, folder_prompt if is_image_folder else single_prompt
+        )
 
     # 3. ArcFace Distance
     if "arcface" in selected:
@@ -299,10 +331,10 @@ def evaluate(
 
         pred_pick = PickScorePredictor(device=device)
         if is_image_folder:
-            pick_res = pred_pick.evaluate_folder(str(image), prompt)
+            pick_res = pred_pick.evaluate_folder(str(image), folder_prompt)
             results["pickscore"] = pick_res.mean_score
         else:
-            results["pickscore"] = pred_pick.evaluate(image, prompt)
+            results["pickscore"] = pred_pick.evaluate(image, single_prompt)
 
     # 10. Directional CLIP
     if "directional_clip" in selected:
@@ -318,10 +350,123 @@ def evaluate(
             pred_dir_clip.evaluate_directional_clip(
                 image_src=reference,
                 image_edit=image,
-                prompt_src=source_prompt,  # type: ignore[arg-type]
-                prompt_target=prompt,  # type: ignore[arg-type]
+                prompt_src=str(source_prompt),
+                prompt_target=single_prompt,
             )
         )
+
+    def _release_eval_memory() -> None:
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+    # 11. CLIP-I
+    if "clip_i" in selected:
+        from image_evaluator.clip_i_predictor import ClipIPredictor
+
+        pred_clip_i = ClipIPredictor(
+            device=device,
+            allow_download=allow_download,
+            download_callback=download_callback,
+        )
+        if is_image_folder:
+            results["clip_i"] = pred_clip_i.evaluate_folder_clip_i(
+                str(reference), str(image)
+            )
+        else:
+            results["clip_i"] = pred_clip_i.evaluate_clip_i(
+                reference, image
+            )
+        del pred_clip_i
+        _release_eval_memory()
+
+    # 12. DINO Similarity
+    if "dino_similarity" in selected:
+        from image_evaluator.dino_similarity_predictor import (
+            DinoSimilarityPredictor,
+        )
+
+        pred_dino = DinoSimilarityPredictor(
+            device=device,
+            allow_download=allow_download,
+            download_callback=download_callback,
+        )
+        if is_image_folder:
+            results["dino_similarity"] = (
+                pred_dino.evaluate_folder_dino_similarity(
+                    str(reference), str(image)
+                )
+            )
+        else:
+            results["dino_similarity"] = pred_dino.evaluate_dino_similarity(
+                reference, image
+            )
+        del pred_dino
+        _release_eval_memory()
+
+    # 13. HPS v2.1
+    if "hpsv2" in selected:
+        from image_evaluator.hpsv2_predictor import Hpsv2Predictor
+
+        pred_hps = Hpsv2Predictor(
+            device=device,
+            allow_download=allow_download,
+            download_callback=download_callback,
+        )
+        if is_image_folder:
+            results["hpsv2"] = pred_hps.evaluate_folder_hpsv2(
+                str(image), folder_prompt
+            )
+        else:
+            results["hpsv2"] = pred_hps.evaluate_hpsv2(
+                image, single_prompt
+            )
+        del pred_hps
+        _release_eval_memory()
+
+    # 14. ImageReward
+    if "image_reward" in selected:
+        from image_evaluator.image_reward_predictor import (
+            ImageRewardPredictor,
+        )
+
+        pred_ir = ImageRewardPredictor(
+            device=device,
+            allow_download=allow_download,
+            download_callback=download_callback,
+        )
+        if is_image_folder:
+            results["image_reward"] = pred_ir.evaluate_folder_image_reward(
+                str(image), folder_prompt
+            )
+        else:
+            results["image_reward"] = pred_ir.evaluate_image_reward(
+                image, single_prompt
+            )
+        del pred_ir
+        _release_eval_memory()
+
+    # 15. VQAScore
+    if "vqascore" in selected:
+        from image_evaluator.vqascore_predictor import (
+            VQAScorePredictor,
+        )
+
+        pred_vqa = VQAScorePredictor(
+            device=device,
+            allow_download=allow_download,
+            download_callback=download_callback,
+        )
+        if is_image_folder:
+            results["vqascore"] = pred_vqa.evaluate_folder_vqascore(
+                str(image), folder_prompt
+            )
+        else:
+            results["vqascore"] = pred_vqa.evaluate_vqascore(
+                image, single_prompt
+            )
+        del pred_vqa
+        _release_eval_memory()
 
     if detailed:
         duration_seconds = max(0.0, time.perf_counter() - start_time)
@@ -334,6 +479,7 @@ def evaluate(
             "prompt": prompt,
             "source_prompt": source_prompt,
             "device": str(device) if device is not None else None,
+            "allow_download": allow_download,
         }
         return EvaluationResult(
             scores=results,
@@ -349,9 +495,11 @@ def evaluate_detailed(
     metrics: str | Sequence[str],
     image: Any,
     reference: Any = None,
-    prompt: str | None = None,
+    prompt: str | Sequence[str] | None = None,
     source_prompt: str | None = None,
     device: str | torch.device | None = None,
+    allow_download: bool = False,
+    download_callback: Any = None,
     **kwargs: Any,
 ) -> EvaluationResult:
     """Evaluate metric(s) and return an EvaluationResult instance.
@@ -368,6 +516,8 @@ def evaluate_detailed(
         source_prompt=source_prompt,
         device=device,
         detailed=True,
+        allow_download=allow_download,
+        download_callback=download_callback,
         **kwargs,
     )
     assert isinstance(res, EvaluationResult)
