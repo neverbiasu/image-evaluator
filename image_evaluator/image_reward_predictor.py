@@ -40,6 +40,15 @@ IMAGE_REWARD_ASSET = ModelAsset(
     install_extra="preference",
 )
 
+IMAGE_REWARD_TOKENIZER_ASSET = ModelAsset(
+    metric_id="image_reward",
+    model_id="bert-base-uncased",
+    source="huggingface",
+    revision="86b5e0934494bd15c9632b12f734a8a67f723594",
+    estimated_download_bytes=698188,
+    install_extra="preference",
+)
+
 IMAGE_REWARD_SUPPORTED_EXTENSIONS = {
     "bmp",
     "jpg",
@@ -51,6 +60,27 @@ IMAGE_REWARD_SUPPORTED_EXTENSIONS = {
 # Normalization constants from official ImageReward implementation
 IMAGE_REWARD_MEAN = 0.16717362830052426
 IMAGE_REWARD_STD = 1.0333394966054072
+
+
+def _is_bert_tokenizer_cached() -> bool:
+    """Return True if bert-base-uncased tokenizer files are cached."""
+    try:
+        from huggingface_hub import try_to_load_from_cache
+
+        p = try_to_load_from_cache(
+            "bert-base-uncased",
+            "vocab.txt",
+            revision=IMAGE_REWARD_TOKENIZER_ASSET.revision,
+        )
+        if isinstance(p, str) and os.path.exists(p):
+            return True
+        p_fallback = try_to_load_from_cache(
+            "bert-base-uncased",
+            "vocab.txt",
+        )
+        return isinstance(p_fallback, str) and os.path.exists(p_fallback)
+    except Exception:
+        return False
 
 
 def _get_image_reward_cached_path() -> str | None:
@@ -89,8 +119,11 @@ def _get_image_reward_cached_path() -> str | None:
 
 
 def _is_image_reward_cached() -> bool:
-    """Return True if ImageReward checkpoint is present in local cache."""
-    return _get_image_reward_cached_path() is not None
+    """Return True if ImageReward checkpoint and tokenizer are cached."""
+    return (
+        _get_image_reward_cached_path() is not None
+        and _is_bert_tokenizer_cached()
+    )
 
 
 class _MLP(nn.Module):
@@ -162,6 +195,46 @@ class _ImageRewardModel(nn.Module):
         return rewards
 
 
+def _build_image_reward_model() -> _ImageRewardModel:
+    """Instantiate ImageReward architecture backbone and reward head."""
+    from timm.models.vision_transformer import VisionTransformer
+    from transformers.models.blip.modeling_blip_text import (
+        BlipTextConfig,
+        BlipTextModel,
+    )
+
+    visual_encoder = VisionTransformer(
+        img_size=224,
+        patch_size=16,
+        in_chans=3,
+        num_classes=0,
+        embed_dim=1024,
+        depth=24,
+        num_heads=16,
+        mlp_ratio=4.0,
+        qkv_bias=True,
+        drop_path_rate=0.1,
+    )
+
+    text_cfg = BlipTextConfig(
+        vocab_size=30524,
+        hidden_size=768,
+        encoder_hidden_size=1024,
+        intermediate_size=3072,
+        num_hidden_layers=12,
+        num_attention_heads=12,
+        max_position_embeddings=512,
+        is_decoder=True,
+        add_cross_attention=True,
+    )
+    text_encoder = BlipTextModel(text_cfg, add_pooling_layer=False)
+
+    return _ImageRewardModel(
+        visual_encoder=visual_encoder,
+        text_encoder=text_encoder,
+    )
+
+
 class ImageRewardPredictor:
     """Predictor for ImageReward v1.0 human preference scalar reward.
 
@@ -197,19 +270,26 @@ class ImageRewardPredictor:
         if self._model is not None:
             return
 
-        from timm.models.vision_transformer import VisionTransformer
         from transformers import BertTokenizer
-        from transformers.models.blip.modeling_blip_text import (
-            BlipTextConfig,
-            BlipTextModel,
-        )
 
-        cp_path = self.checkpoint_path or _get_image_reward_cached_path()
-        is_cached = cp_path is not None and os.path.exists(cp_path)
+        if self.checkpoint_path is not None:
+            cp_path = self.checkpoint_path
+            is_cached = os.path.exists(cp_path)
+        else:
+            is_cached = _is_image_reward_cached()
+            cp_path = _get_image_reward_cached_path() if is_cached else None
 
         check_asset_and_permit_download(
             asset=IMAGE_REWARD_ASSET,
             is_cached=is_cached,
+            allow_download=self.allow_download,
+            disclosure_callback=self.download_callback,
+        )
+
+        is_tok_cached = _is_bert_tokenizer_cached()
+        check_asset_and_permit_download(
+            asset=IMAGE_REWARD_TOKENIZER_ASSET,
+            is_cached=is_tok_cached,
             allow_download=self.allow_download,
             disclosure_callback=self.download_callback,
         )
@@ -223,39 +303,7 @@ class ImageRewardPredictor:
                 revision=IMAGE_REWARD_ASSET.revision,
             )
 
-        # 1. Instantiate visual encoder (ViT-large, 224x224)
-        visual_encoder = VisionTransformer(
-            img_size=224,
-            patch_size=16,
-            in_chans=3,
-            num_classes=0,
-            embed_dim=1024,
-            depth=24,
-            num_heads=16,
-            mlp_ratio=4.0,
-            qkv_bias=True,
-            drop_path_rate=0.1,
-        )
-
-        # 2. Instantiate cross-attention text encoder
-        text_cfg = BlipTextConfig(
-            vocab_size=30524,
-            hidden_size=768,
-            encoder_hidden_size=1024,
-            intermediate_size=3072,
-            num_hidden_layers=12,
-            num_attention_heads=12,
-            max_position_embeddings=512,
-            is_decoder=True,
-            add_cross_attention=True,
-        )
-        text_encoder = BlipTextModel(text_cfg)
-
-        # 3. Assemble complete model
-        model = _ImageRewardModel(
-            visual_encoder=visual_encoder,
-            text_encoder=text_encoder,
-        )
+        model = _build_image_reward_model()
 
         checkpoint = torch.load(
             cp_path,  # type: ignore[arg-type]
@@ -267,7 +315,26 @@ class ImageRewardPredictor:
             if isinstance(checkpoint, dict) and "state_dict" in checkpoint
             else checkpoint
         )
-        model.load_state_dict(state_dict, strict=False)
+        incompatible = model.load_state_dict(state_dict, strict=False)
+        if incompatible.missing_keys:
+            raise RuntimeError(
+                "ImageReward model checkpoint is missing required keys: "
+                f"{sorted(incompatible.missing_keys)}"
+            )
+
+        allowed_unexpected = {
+            "blip.vision_proj.weight",
+            "blip.vision_proj.bias",
+            "blip.text_proj.weight",
+            "blip.text_proj.bias",
+            "blip.text_encoder.embeddings.position_ids",
+        }
+        unexpected = set(incompatible.unexpected_keys) - allowed_unexpected
+        if unexpected:
+            raise RuntimeError(
+                "ImageReward model checkpoint contains unexpected keys: "
+                f"{sorted(unexpected)}"
+            )
 
         model = model.to(self.device)
         model.eval()
@@ -286,10 +353,14 @@ class ImageRewardPredictor:
             ]
         )
 
-        tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+        tokenizer = BertTokenizer.from_pretrained(
+            "bert-base-uncased",
+            revision=IMAGE_REWARD_TOKENIZER_ASSET.revision,
+            local_files_only=not self.allow_download,
+        )
         tokenizer.add_special_tokens({"bos_token": "[DEC]"})
         tokenizer.add_special_tokens({"additional_special_tokens": ["[ENC]"]})
-        tokenizer.enc_token_id = tokenizer.additional_special_tokens_ids[0]
+        tokenizer.enc_token_id = tokenizer.convert_tokens_to_ids("[ENC]")
         self._tokenizer = tokenizer
 
     def _prepare_image(self, image: Any) -> torch.Tensor:

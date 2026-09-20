@@ -35,7 +35,7 @@ DEFAULT_IMAGE_TOKEN = "<image>"
 IMAGE_TOKEN_INDEX = -200
 IGNORE_INDEX = -100
 
-VQA_SCORE_ASSET = ModelAsset(
+VQA_SCORE_TEXT_ASSET = ModelAsset(
     metric_id="vqascore",
     model_id="zhiqiulin/clip-flant5-xl",
     source="huggingface",
@@ -43,6 +43,18 @@ VQA_SCORE_ASSET = ModelAsset(
     estimated_download_bytes=6327057688,
     install_extra="vqa",
 )
+
+VQA_SCORE_VISION_ASSET = ModelAsset(
+    metric_id="vqascore",
+    model_id="openai/clip-vit-large-patch14-336",
+    source="huggingface",
+    revision="ce19dc912ca5cd21c8a653c79e251e808ccabcd1",
+    estimated_download_bytes=1715593675,
+    install_extra="vqa",
+)
+
+# Canonical reference alias for backward compatibility
+VQA_SCORE_ASSET = VQA_SCORE_TEXT_ASSET
 
 VQA_SCORE_SUPPORTED_EXTENSIONS = {
     "bmp",
@@ -71,17 +83,33 @@ def _get_vqascore_cached_paths() -> tuple[str | None, str | None]:
                 p1 = try_to_load_from_cache(
                     "zhiqiulin/clip-flant5-xl",
                     "pytorch_model.bin",
-                    revision=VQA_SCORE_ASSET.revision,
+                    revision=VQA_SCORE_TEXT_ASSET.revision,
                 )
                 if isinstance(p1, str) and os.path.exists(p1):
                     xl_path = os.path.dirname(p1)
+                else:
+                    p1_fb = try_to_load_from_cache(
+                        "zhiqiulin/clip-flant5-xl",
+                        "pytorch_model.bin",
+                    )
+                    if isinstance(p1_fb, str) and os.path.exists(p1_fb):
+                        xl_path = os.path.dirname(p1_fb)
 
             if clip_path is None:
                 p2 = try_to_load_from_cache(
-                    "openai/clip-vit-large-patch14-336", "pytorch_model.bin"
+                    "openai/clip-vit-large-patch14-336",
+                    "pytorch_model.bin",
+                    revision=VQA_SCORE_VISION_ASSET.revision,
                 )
                 if isinstance(p2, str) and os.path.exists(p2):
                     clip_path = os.path.dirname(p2)
+                else:
+                    p2_fb = try_to_load_from_cache(
+                        "openai/clip-vit-large-patch14-336",
+                        "pytorch_model.bin",
+                    )
+                    if isinstance(p2_fb, str) and os.path.exists(p2_fb):
+                        clip_path = os.path.dirname(p2_fb)
         except Exception:
             pass
 
@@ -423,16 +451,19 @@ class VQAScorePredictor:
             if clip_path is None:
                 clip_path = c_clip
 
-        is_cached = bool(
-            xl_path
-            and os.path.exists(xl_path)
-            and clip_path
-            and os.path.exists(clip_path)
+        is_xl_cached = bool(xl_path and os.path.exists(xl_path))
+        is_clip_cached = bool(clip_path and os.path.exists(clip_path))
+
+        check_asset_and_permit_download(
+            asset=VQA_SCORE_TEXT_ASSET,
+            is_cached=is_xl_cached,
+            allow_download=self.allow_download,
+            disclosure_callback=self.download_callback,
         )
 
         check_asset_and_permit_download(
-            asset=VQA_SCORE_ASSET,
-            is_cached=is_cached,
+            asset=VQA_SCORE_VISION_ASSET,
+            is_cached=is_clip_cached,
             allow_download=self.allow_download,
             disclosure_callback=self.download_callback,
         )
@@ -440,42 +471,23 @@ class VQAScorePredictor:
         from huggingface_hub import snapshot_download
         from transformers import AutoTokenizer
 
-        if not is_cached:
-            if xl_path is None or not os.path.exists(xl_path):
-                xl_path = snapshot_download(
-                    "zhiqiulin/clip-flant5-xl",
-                    revision=VQA_SCORE_ASSET.revision,
-                    ignore_patterns=[
-                        "*.msgpack",
-                        "*.h5",
-                        "trainer_state.json",
-                        "training_args.bin",
-                    ],
-                )
-            if clip_path is None or not os.path.exists(clip_path):
-                clip_path = snapshot_download(
-                    "openai/clip-vit-large-patch14-336",
-                    ignore_patterns=["*.h5", "*.msgpack", "*.safetensors"],
-                )
-        else:
-            if xl_path is None or not os.path.exists(xl_path):
-                xl_path = snapshot_download(
-                    "zhiqiulin/clip-flant5-xl",
-                    revision=VQA_SCORE_ASSET.revision,
-                    ignore_patterns=[
-                        "*.msgpack",
-                        "*.h5",
-                        "trainer_state.json",
-                        "training_args.bin",
-                    ],
-                    local_files_only=True,
-                )
-            if clip_path is None or not os.path.exists(clip_path):
-                clip_path = snapshot_download(
-                    "openai/clip-vit-large-patch14-336",
-                    ignore_patterns=["*.h5", "*.msgpack", "*.safetensors"],
-                    local_files_only=True,
-                )
+        if not is_xl_cached:
+            xl_path = snapshot_download(
+                "zhiqiulin/clip-flant5-xl",
+                revision=VQA_SCORE_TEXT_ASSET.revision,
+                ignore_patterns=[
+                    "*.msgpack",
+                    "*.h5",
+                    "trainer_state.json",
+                    "training_args.bin",
+                ],
+            )
+        if not is_clip_cached:
+            clip_path = snapshot_download(
+                "openai/clip-vit-large-patch14-336",
+                revision=VQA_SCORE_VISION_ASSET.revision,
+                ignore_patterns=["*.h5", "*.msgpack", "*.safetensors"],
+            )
 
         self._tokenizer = AutoTokenizer.from_pretrained(
             xl_path, use_fast=False, model_max_length=2048
