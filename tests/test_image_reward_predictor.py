@@ -44,6 +44,15 @@ class _DummyTokenizerOutput:
 
 
 class _DummyTokenizer:
+    def __init__(self):
+        self.enc_token_id = 30523
+
+    def add_special_tokens(self, *args, **kwargs) -> int:
+        return 1
+
+    def convert_tokens_to_ids(self, token: str) -> int:
+        return 30523
+
     def __call__(self, prompt: str, **kwargs) -> _DummyTokenizerOutput:
         if "negative" in prompt:
             ids = torch.tensor([[999, 1, 2]])
@@ -327,3 +336,117 @@ def test_cli_missing_prompt_fails(sample_image):
     with pytest.raises(SystemExit) as exc_info:
         main(["--metrics", "image_reward", "--image", sample_image])
     assert exc_info.value.code == 2
+
+
+def test_download_gating_tokenizer_uncached_raises_error(sample_image):
+    """Verify uncached tokenizer raises DownloadNotAllowedError."""
+    with patch(
+        "image_evaluator.image_reward_predictor._is_image_reward_cached",
+        return_value=True,
+    ), patch(
+        "image_evaluator.image_reward_predictor._get_image_reward_cached_path",
+        return_value="/fake/ImageReward.pt",
+    ), patch(
+        "image_evaluator.image_reward_predictor._is_bert_tokenizer_cached",
+        return_value=False,
+    ):
+        predictor = ImageRewardPredictor(allow_download=False)
+        with pytest.raises(DownloadNotAllowedError) as exc_info:
+            predictor.compute_image_reward(sample_image, "a photo of a cat")
+
+        msg = str(exc_info.value)
+        assert "bert-base-uncased" in msg
+        assert "image_reward" in msg
+        assert "--allow-download" in msg
+
+
+class _DummyBackboneForLoad(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.fc1 = torch.nn.Linear(2, 2)
+        self.fc2 = torch.nn.Linear(2, 2)
+
+
+def test_load_state_dict_missing_keys_raises_error(tmp_path):
+    """Verify incomplete checkpoint raises RuntimeError on missing keys."""
+    fake_ckpt = tmp_path / "incomplete_reward.pt"
+    torch.save({"fc1.weight": torch.zeros(2, 2)}, fake_ckpt)
+
+    predictor = ImageRewardPredictor(
+        checkpoint_path=str(fake_ckpt),
+        allow_download=True,
+    )
+    with patch(
+        "image_evaluator.image_reward_predictor._build_image_reward_model",
+        return_value=_DummyBackboneForLoad(),
+    ), patch(
+        "image_evaluator.image_reward_predictor._is_bert_tokenizer_cached",
+        return_value=True,
+    ), patch("transformers.BertTokenizer.from_pretrained") as mock_tok:
+        tok_inst = _DummyTokenizer()
+        tok_inst.enc_token_id = 30523
+        tok_inst.convert_tokens_to_ids = lambda token: 30523
+        mock_tok.return_value = tok_inst
+        with pytest.raises(RuntimeError) as exc_info:
+            predictor._ensure_loaded()
+        assert "missing required keys" in str(exc_info.value)
+
+
+def test_load_state_dict_unexpected_keys_raises_error(tmp_path):
+    """Verify checkpoint with rogue keys raises RuntimeError."""
+    dummy_model = _DummyBackboneForLoad()
+    state = dummy_model.state_dict()
+    state["rogue_layer.weight"] = torch.zeros(10)
+
+    fake_ckpt = tmp_path / "rogue_reward.pt"
+    torch.save(state, fake_ckpt)
+
+    predictor = ImageRewardPredictor(
+        checkpoint_path=str(fake_ckpt),
+        allow_download=True,
+    )
+    with patch(
+        "image_evaluator.image_reward_predictor._build_image_reward_model",
+        return_value=_DummyBackboneForLoad(),
+    ), patch(
+        "image_evaluator.image_reward_predictor._is_bert_tokenizer_cached",
+        return_value=True,
+    ), patch("transformers.BertTokenizer.from_pretrained") as mock_tok:
+        tok_inst = _DummyTokenizer()
+        tok_inst.enc_token_id = 30523
+        tok_inst.convert_tokens_to_ids = lambda token: 30523
+        mock_tok.return_value = tok_inst
+        with pytest.raises(RuntimeError) as exc_info:
+            predictor._ensure_loaded()
+        assert "contains unexpected keys" in str(exc_info.value)
+        assert "rogue_layer.weight" in str(exc_info.value)
+
+
+def test_load_state_dict_allowed_unexpected_keys_succeeds(tmp_path):
+    """Verify checkpoint with allowed unmapped BLIP keys succeeds."""
+    dummy_model = _DummyBackboneForLoad()
+    state = dummy_model.state_dict()
+    state["blip.vision_proj.weight"] = torch.zeros(4)
+    state["blip.text_encoder.embeddings.position_ids"] = torch.zeros(4)
+
+    fake_ckpt = tmp_path / "valid_blip_reward.pt"
+    torch.save(state, fake_ckpt)
+
+    predictor = ImageRewardPredictor(
+        checkpoint_path=str(fake_ckpt),
+        allow_download=True,
+    )
+    with patch(
+        "image_evaluator.image_reward_predictor._build_image_reward_model",
+        return_value=_DummyBackboneForLoad(),
+    ), patch(
+        "image_evaluator.image_reward_predictor._is_bert_tokenizer_cached",
+        return_value=True,
+    ), patch("transformers.BertTokenizer.from_pretrained") as mock_tok:
+        tok_inst = _DummyTokenizer()
+        tok_inst.enc_token_id = 30523
+        tok_inst.convert_tokens_to_ids = lambda token: 30523
+        mock_tok.return_value = tok_inst
+        predictor._ensure_loaded()
+        assert predictor._model is not None
+

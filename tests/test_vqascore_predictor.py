@@ -17,6 +17,8 @@ from image_evaluator.main import main
 from image_evaluator.model_assets import DownloadNotAllowedError
 from image_evaluator.vqascore_predictor import (
     VQA_SCORE_ASSET,
+    VQA_SCORE_TEXT_ASSET,
+    VQA_SCORE_VISION_ASSET,
     VQAScorePredictor,
 )
 
@@ -315,3 +317,60 @@ def test_high_level_evaluate_and_detailed(sample_image: str) -> None:
         json_str = detail.to_json()
         parsed = json.loads(json_str)
         assert parsed["scores"]["vqascore"] == pytest.approx(0.7788, abs=1e-4)
+
+
+def test_download_gating_vision_uncached_raises_error(
+    sample_image: str,
+) -> None:
+    """Verify uncached vision model raises DownloadNotAllowedError."""
+    with patch(
+        "image_evaluator.vqascore_predictor._get_vqascore_cached_paths",
+        return_value=("/fake/xl_dir", None),
+    ), patch(
+        "os.path.exists",
+        side_effect=lambda p: True if p == "/fake/xl_dir" else False,
+    ):
+        predictor = VQAScorePredictor(allow_download=False)
+        with pytest.raises(DownloadNotAllowedError) as exc_info:
+            predictor.compute_vqascore(sample_image, "a photo of a cat")
+
+        msg = str(exc_info.value)
+        assert "openai/clip-vit-large-patch14-336" in msg
+        assert "vqascore" in msg
+        assert "--allow-download" in msg
+        assert "1715593675" in msg or "1.7 GB" in msg
+
+
+def test_download_gating_discloses_both_assets() -> None:
+    """Verify both text backbone and vision tower assets are disclosed."""
+    from image_evaluator.model_assets import check_asset_and_permit_download
+
+    disclosures: list[tuple[Any, str]] = []
+
+    def callback(asset: Any, message: str) -> None:
+        disclosures.append((asset, message))
+
+    # 1. Text backbone disclosure
+    check_asset_and_permit_download(
+        asset=VQA_SCORE_TEXT_ASSET,
+        is_cached=False,
+        allow_download=True,
+        disclosure_callback=callback,
+    )
+    # 2. Vision tower disclosure
+    check_asset_and_permit_download(
+        asset=VQA_SCORE_VISION_ASSET,
+        is_cached=False,
+        allow_download=True,
+        disclosure_callback=callback,
+    )
+
+    assert len(disclosures) == 2
+    text_asset, text_msg = disclosures[0]
+    vis_asset, vis_msg = disclosures[1]
+
+    assert text_asset.model_id == "zhiqiulin/clip-flant5-xl"
+    assert "6.3 GB" in text_msg or "6327057688" in text_msg
+    assert vis_asset.model_id == "openai/clip-vit-large-patch14-336"
+    assert "1.7 GB" in vis_msg or "1715593675" in vis_msg
+

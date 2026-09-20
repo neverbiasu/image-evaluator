@@ -25,11 +25,14 @@ from image_evaluator.hpsv2_predictor import (
 )
 from image_evaluator.image_reward_predictor import (
     IMAGE_REWARD_ASSET,
+    IMAGE_REWARD_TOKENIZER_ASSET,
 )
 from image_evaluator.main import cli
 from image_evaluator.pickscore_predictor import PickScorePredictor
 from image_evaluator.vqascore_predictor import (
     VQA_SCORE_ASSET,
+    VQA_SCORE_TEXT_ASSET,
+    VQA_SCORE_VISION_ASSET,
 )
 
 
@@ -79,6 +82,9 @@ def test_model_asset_revisions_pinned():
     assert len(DINO_SIMILARITY_ASSET.revision) == 40
     assert len(HPSV2_ASSET.revision) == 40
     assert len(IMAGE_REWARD_ASSET.revision) == 40
+    assert len(IMAGE_REWARD_TOKENIZER_ASSET.revision) == 40
+    assert len(VQA_SCORE_TEXT_ASSET.revision) == 40
+    assert len(VQA_SCORE_VISION_ASSET.revision) == 40
     assert len(VQA_SCORE_ASSET.revision) == 40
 
 
