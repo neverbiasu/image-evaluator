@@ -43,6 +43,8 @@ def evaluate(
     source_prompt: str | None = None,
     device: str | torch.device | None = None,
     detailed: bool = False,
+    allow_download: bool = False,
+    download_callback: Any = None,
     **kwargs: Any,
 ) -> dict[str, Any] | EvaluationResult:
     """Evaluate one or more metrics across image(s), references, or prompts.
@@ -54,12 +56,14 @@ def evaluate(
         metrics: Single metric name or collection of metric names.
         image: Evaluated image (path, PIL Image, or torch.Tensor).
         reference: Reference image or folder for pairwise/distribution metrics.
-        prompt: Text prompt string required for 'clip', 'pickscore', and
-            'directional_clip'.
+        prompt: Text prompt string required for 'clip', 'pickscore', 'hpsv2',
+            'image_reward', 'vqascore', and 'directional_clip'.
         source_prompt: Source prompt string required for 'directional_clip'.
         device: Computing device ('cuda', 'cpu', 'mps', or None for auto).
-        detailed: If True, return an EvaluationResult instance instead of a
+        detailed: If True, return EvaluationResult object; if False, return
             plain dict.
+        allow_download: If True, allow downloading uncached model weights.
+        download_callback: Optional callback(asset, msg) on download.
         **kwargs: Additional parameters passed to specific predictors.
 
     Returns:
@@ -323,6 +327,104 @@ def evaluate(
             )
         )
 
+    # 11. CLIP-I
+    if "clip_i" in selected:
+        from image_evaluator.clip_i_predictor import ClipIPredictor
+
+        pred_clip_i = ClipIPredictor(
+            device=device,
+            allow_download=allow_download,
+            download_callback=download_callback,
+        )
+        if is_image_folder:
+            results["clip_i"] = pred_clip_i.evaluate_folder_clip_i(
+                str(reference), str(image)
+            )
+        else:
+            results["clip_i"] = pred_clip_i.evaluate_clip_i(
+                reference, image
+            )
+
+    # 12. DINO Similarity
+    if "dino_similarity" in selected:
+        from image_evaluator.dino_similarity_predictor import (
+            DinoSimilarityPredictor,
+        )
+
+        pred_dino = DinoSimilarityPredictor(
+            device=device,
+            allow_download=allow_download,
+            download_callback=download_callback,
+        )
+        if is_image_folder:
+            results["dino_similarity"] = (
+                pred_dino.evaluate_folder_dino_similarity(
+                    str(reference), str(image)
+                )
+            )
+        else:
+            results["dino_similarity"] = pred_dino.evaluate_dino_similarity(
+                reference, image
+            )
+
+    # 13. HPS v2.1
+    if "hpsv2" in selected:
+        from image_evaluator.hpsv2_predictor import Hpsv2Predictor
+
+        pred_hps = Hpsv2Predictor(
+            device=device,
+            allow_download=allow_download,
+            download_callback=download_callback,
+        )
+        if is_image_folder:
+            results["hpsv2"] = pred_hps.evaluate_folder_hpsv2(
+                str(image), prompt  # type: ignore[arg-type]
+            )
+        else:
+            results["hpsv2"] = pred_hps.evaluate_hpsv2(
+                image, prompt  # type: ignore[arg-type]
+            )
+
+    # 14. ImageReward
+    if "image_reward" in selected:
+        from image_evaluator.image_reward_predictor import (
+            ImageRewardPredictor,
+        )
+
+        pred_ir = ImageRewardPredictor(
+            device=device,
+            allow_download=allow_download,
+            download_callback=download_callback,
+        )
+        if is_image_folder:
+            results["image_reward"] = pred_ir.evaluate_folder_image_reward(
+                str(image), prompt  # type: ignore[arg-type]
+            )
+        else:
+            results["image_reward"] = pred_ir.evaluate_image_reward(
+                image, prompt  # type: ignore[arg-type]
+            )
+
+    # 15. VQAScore
+    if "vqascore" in selected:
+        from image_evaluator.vqascore_predictor import (
+            VQAScorePredictor,
+        )
+
+        pred_vqa = VQAScorePredictor(
+            device=device,
+            allow_download=allow_download,
+            download_callback=download_callback,
+        )
+        if is_image_folder:
+            results["vqascore"] = pred_vqa.evaluate_folder_vqascore(
+                str(image), prompt  # type: ignore[arg-type]
+            )
+        else:
+            results["vqascore"] = pred_vqa.evaluate_vqascore(
+                image, prompt  # type: ignore[arg-type]
+            )
+
     if detailed:
         duration_seconds = max(0.0, time.perf_counter() - start_time)
         specs = {m: get_metric(m) for m in results}
@@ -334,6 +436,7 @@ def evaluate(
             "prompt": prompt,
             "source_prompt": source_prompt,
             "device": str(device) if device is not None else None,
+            "allow_download": allow_download,
         }
         return EvaluationResult(
             scores=results,
@@ -352,6 +455,8 @@ def evaluate_detailed(
     prompt: str | None = None,
     source_prompt: str | None = None,
     device: str | torch.device | None = None,
+    allow_download: bool = False,
+    download_callback: Any = None,
     **kwargs: Any,
 ) -> EvaluationResult:
     """Evaluate metric(s) and return an EvaluationResult instance.
@@ -368,6 +473,8 @@ def evaluate_detailed(
         source_prompt=source_prompt,
         device=device,
         detailed=True,
+        allow_download=allow_download,
+        download_callback=download_callback,
         **kwargs,
     )
     assert isinstance(res, EvaluationResult)

@@ -5,7 +5,7 @@ image generation evaluation toolkit.
 import importlib
 from typing import Any
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 _EXPORTS = {
     "evaluate": ("image_evaluator.core", "evaluate"),
@@ -18,6 +18,14 @@ _EXPORTS = {
         "image_evaluator.clip_score_predictor",
         "ClipScorePredictor",
     ),
+    "ClipIPredictor": (
+        "image_evaluator.clip_i_predictor",
+        "ClipIPredictor",
+    ),
+    "DinoSimilarityPredictor": (
+        "image_evaluator.dino_similarity_predictor",
+        "DinoSimilarityPredictor",
+    ),
     "LaionAIAestheticPredictor": (
         "image_evaluator.laion_ai_aesthetic_predictor",
         "LaionAIAestheticPredictor",
@@ -25,6 +33,14 @@ _EXPORTS = {
     "PickScorePredictor": (
         "image_evaluator.pickscore_predictor",
         "PickScorePredictor",
+    ),
+    "Hpsv2Predictor": (
+        "image_evaluator.hpsv2_predictor",
+        "Hpsv2Predictor",
+    ),
+    "ImageRewardPredictor": (
+        "image_evaluator.image_reward_predictor",
+        "ImageRewardPredictor",
     ),
     "FIDPredictor": ("image_evaluator.fid_predictor", "FIDPredictor"),
     "KIDPredictor": ("image_evaluator.kid_predictor", "KIDPredictor"),
@@ -35,6 +51,15 @@ _EXPORTS = {
     "DirectionalClipPredictor": (
         "image_evaluator.directional_clip_predictor",
         "DirectionalClipPredictor",
+    ),
+    "VQAScorePredictor": (
+        "image_evaluator.vqascore_predictor",
+        "VQAScorePredictor",
+    ),
+    "ModelAsset": ("image_evaluator.model_assets", "ModelAsset"),
+    "DownloadNotAllowedError": (
+        "image_evaluator.model_assets",
+        "DownloadNotAllowedError",
     ),
 }
 

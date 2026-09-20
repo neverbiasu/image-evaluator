@@ -23,13 +23,18 @@ EXPECTED_METRICS = {
     "aesthetic",
     "arcface",
     "clip",
+    "clip_i",
+    "dino_similarity",
     "directional_clip",
     "fid",
+    "hpsv2",
+    "image_reward",
     "kid",
     "lpips",
     "pickscore",
     "psnr",
     "ssim",
+    "vqascore",
 }
 
 
@@ -47,12 +52,110 @@ def _spec(metric_id: str) -> MetricSpec:
     )
 
 
-def test_catalog_contains_current_ten_metrics_in_stable_order():
+def test_catalog_contains_current_fifteen_metrics_in_stable_order():
     metrics = list_metrics()
 
-    assert len(metrics) == 10
+    assert len(metrics) == 15
     assert {metric.id for metric in metrics} == EXPECTED_METRICS
     assert [metric.id for metric in metrics] == sorted(EXPECTED_METRICS)
+
+
+def test_vqascore_has_approved_registry_metadata():
+    metric = get_metric("vqascore")
+
+    assert metric.id == "vqascore"
+    assert metric.display_name == "VQAScore"
+    assert metric.inputs.required == ("image", "prompt")
+    assert metric.inputs.optional == ()
+    assert metric.tasks == ("text_to_image", "subject_driven_generation")
+    assert metric.objectives == ("alignment", "compositionality")
+    assert metric.score_direction == "higher_is_better"
+    assert metric.implementation.backend == "transformers"
+    assert (
+        metric.implementation.protocol
+        == "visual-question-answering-posterior-probability"
+    )
+    assert metric.implementation.model == "zhiqiulin/clip-flant5-xl"
+    assert metric.implementation.model_revision == "3b4a6b1"
+    assert metric.aggregation == ("arithmetic_mean_for_directory_inputs",)
+    assert metric.dependencies == (
+        "accelerate",
+        "sentencepiece",
+        "transformers",
+        "torch",
+    )
+    assert metric.docs_path == "docs/vqascore.md"
+
+
+def test_image_reward_has_approved_contract_and_metadata():
+    metric = get_metric("image_reward")
+
+    assert metric.inputs.required == ("image", "prompt")
+    assert metric.inputs.optional == ()
+    assert metric.tasks == ("text_to_image", "subject_driven_generation")
+    assert metric.objectives == ("human_preference",)
+    assert metric.score_direction == "higher_is_better"
+    assert metric.implementation.backend == "transformers"
+    assert (
+        metric.implementation.protocol
+        == "blip-cross-attention-scalar-reward"
+    )
+    assert metric.implementation.model == "THUDM/ImageReward"
+    assert metric.implementation.model_revision == "v1.0"
+    assert metric.aggregation == ("arithmetic_mean_for_directory_inputs",)
+    assert metric.dependencies == ("timm", "transformers", "torch")
+    assert metric.docs_path == "docs/image-reward.md"
+
+
+def test_hpsv2_has_approved_contract_and_metadata():
+    metric = get_metric("hpsv2")
+
+    assert metric.inputs.required == ("image", "prompt")
+    assert metric.inputs.optional == ()
+    assert metric.tasks == ("text_to_image", "subject_driven_generation")
+    assert metric.objectives == ("human_preference",)
+    assert metric.score_direction == "higher_is_better"
+    assert metric.implementation.backend == "open_clip"
+    assert metric.implementation.protocol == "hps-v2.1-cosine-score"
+    assert metric.implementation.model == "xswu/HPSv2"
+    assert metric.implementation.model_revision == "v2.1"
+    assert metric.aggregation == ("arithmetic_mean_for_directory_inputs",)
+
+
+def test_dino_similarity_has_approved_contract_and_metadata():
+    metric = get_metric("dino_similarity")
+
+    assert metric.inputs.required == ("image", "reference_image")
+    assert metric.inputs.optional == ()
+    assert metric.tasks == ("image_editing", "subject_driven_generation")
+    assert metric.objectives == ("fidelity", "structural_similarity")
+    assert metric.score_direction == "higher_is_better"
+    assert metric.implementation.backend == "transformers"
+    assert (
+        metric.implementation.protocol
+        == "cls-token-cosine-similarity"
+    )
+    assert metric.implementation.model == "facebook/dinov2-base"
+    assert metric.implementation.model_revision == "f9e44c8"
+    assert metric.aggregation == ("arithmetic_mean_for_directory_inputs",)
+
+
+def test_clip_i_has_approved_contract_and_metadata():
+    metric = get_metric("clip_i")
+
+    assert metric.inputs.required == ("image", "reference_image")
+    assert metric.inputs.optional == ()
+    assert metric.tasks == ("image_editing", "subject_driven_generation")
+    assert metric.objectives == ("fidelity", "identity_preservation")
+    assert metric.score_direction == "higher_is_better"
+    assert metric.implementation.backend == "open_clip"
+    assert (
+        metric.implementation.protocol
+        == "visual-projection-cosine-similarity"
+    )
+    assert metric.implementation.model == "openai/clip-vit-large-patch14"
+    assert metric.implementation.model_revision == "openai"
+    assert metric.aggregation == ("arithmetic_mean_for_directory_inputs",)
 
 
 def test_directional_clip_has_approved_four_input_contract():
@@ -163,7 +266,7 @@ def test_filter_uses_open_task_and_objective_terms():
     )
 
     assert {"aesthetic", "clip", "directional_clip", "lpips"} <= editing
-    assert preference == {"pickscore"}
+    assert preference == {"hpsv2", "image_reward", "pickscore"}
     assert tuple(metric.id for metric in combined) == ("directional_clip",)
     assert filter_metrics(task="future_unregistered_task") == ()
 

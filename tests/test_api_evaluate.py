@@ -13,17 +13,21 @@ from image_evaluator import (
 )
 
 
-def test_package_exports_and_version():
-    """Verify package version, exports, and lazy loading."""
-    assert image_evaluator.__version__ == "0.5.0"
+def test_top_level_package_exports_version():
+    assert hasattr(image_evaluator, "__version__")
+    assert image_evaluator.__version__ == "0.6.0"
     for name in [
         "evaluate",
         "SSIMPredictor",
         "PSNRPredictor",
         "LPIPSPredictor",
         "ClipScorePredictor",
+        "ClipIPredictor",
+        "DinoSimilarityPredictor",
         "LaionAIAestheticPredictor",
         "PickScorePredictor",
+        "Hpsv2Predictor",
+        "ImageRewardPredictor",
         "FIDPredictor",
         "KIDPredictor",
         "ArcFaceDistPredictor",
@@ -697,14 +701,34 @@ def test_registry_capabilities_single_source_of_truth():
     specs = list_metrics()
     assert SUPPORTED_METRICS == {s.id for s in specs}
     assert "directional_clip" in SUPPORTED_METRICS
-    assert len(SUPPORTED_METRICS) == 10
+    assert "clip_i" in SUPPORTED_METRICS
+    assert "dino_similarity" in SUPPORTED_METRICS
+    assert "hpsv2" in SUPPORTED_METRICS
+    assert "image_reward" in SUPPORTED_METRICS
+    assert "vqascore" in SUPPORTED_METRICS
+    assert len(SUPPORTED_METRICS) == 15
 
     assert PROMPT_METRICS == {
         s.id for s in specs if "prompt" in s.inputs.required
     }
     assert "directional_clip" in PROMPT_METRICS
+    assert "hpsv2" in PROMPT_METRICS
+    assert "image_reward" in PROMPT_METRICS
+    assert "vqascore" in PROMPT_METRICS
 
     assert SOURCE_PROMPT_METRICS == {"directional_clip"}
     assert "directional_clip" in REFERENCE_METRICS
+    assert "clip_i" in REFERENCE_METRICS
+    assert "dino_similarity" in REFERENCE_METRICS
+    assert "hpsv2" not in REFERENCE_METRICS
+    assert "image_reward" not in REFERENCE_METRICS
+    assert "vqascore" not in REFERENCE_METRICS
     assert DATASET_METRICS == {"fid", "kid"}
-    assert PAIRWISE_METRICS == {"arcface", "lpips", "ssim", "psnr"}
+    assert PAIRWISE_METRICS == {
+        "arcface",
+        "clip_i",
+        "dino_similarity",
+        "lpips",
+        "ssim",
+        "psnr",
+    }

@@ -136,6 +136,47 @@ METRIC_REGISTRY = MetricRegistry(
             docs_path="docs/clip-similarity.md",
         ),
         MetricSpec(
+            id="clip_i",
+            display_name="CLIP Image-Image Similarity",
+            tasks=("image_editing", "subject_driven_generation"),
+            objectives=("fidelity", "identity_preservation"),
+            inputs=_PAIR,
+            score_direction="higher_is_better",
+            implementation=ImplementationRef(
+                backend="open_clip",
+                protocol="visual-projection-cosine-similarity",
+                model="openai/clip-vit-large-patch14",
+                model_revision="openai",
+            ),
+            aggregation=("arithmetic_mean_for_directory_inputs",),
+            dependencies=("open-clip-torch", "torch"),
+            citations=(
+                "https://arxiv.org/abs/2103.00020",
+                "https://arxiv.org/abs/2208.12242",
+            ),
+            docs_path="docs/clip-i-similarity.md",
+        ),
+        MetricSpec(
+            id="dino_similarity",
+            display_name="DINOv2 Image-Image Similarity",
+            tasks=("image_editing", "subject_driven_generation"),
+            objectives=("fidelity", "structural_similarity"),
+            inputs=_PAIR,
+            score_direction="higher_is_better",
+            implementation=ImplementationRef(
+                backend="transformers",
+                protocol="cls-token-cosine-similarity",
+                model="facebook/dinov2-base",
+                model_revision="f9e44c8",
+            ),
+            aggregation=("arithmetic_mean_for_directory_inputs",),
+            dependencies=("transformers", "torch"),
+            citations=(
+                "https://arxiv.org/abs/2304.07193",
+            ),
+            docs_path="docs/dino-similarity.md",
+        ),
+        MetricSpec(
             id="directional_clip",
             display_name="Directional CLIP",
             tasks=("image_editing",),
@@ -180,6 +221,48 @@ METRIC_REGISTRY = MetricRegistry(
                 "Subtleties in GAN Evaluation, CVPR 2022",
             ),
             docs_path="docs/fid.md",
+        ),
+        MetricSpec(
+            id="hpsv2",
+            display_name="HPS v2.1",
+            tasks=("text_to_image", "subject_driven_generation"),
+            objectives=("human_preference",),
+            inputs=_IMAGE_PROMPT,
+            score_direction="higher_is_better",
+            implementation=ImplementationRef(
+                backend="open_clip",
+                protocol="hps-v2.1-cosine-score",
+                model="xswu/HPSv2",
+                model_revision="v2.1",
+            ),
+            aggregation=("arithmetic_mean_for_directory_inputs",),
+            dependencies=("open_clip", "torch"),
+            citations=(
+                "Wu et al., Human Preference Score v2: A Benchmark and "
+                "Dataset for Human Preference Evaluation, NeurIPS 2023",
+            ),
+            docs_path="docs/hpsv2.md",
+        ),
+        MetricSpec(
+            id="image_reward",
+            display_name="ImageReward",
+            tasks=("text_to_image", "subject_driven_generation"),
+            objectives=("human_preference",),
+            inputs=_IMAGE_PROMPT,
+            score_direction="higher_is_better",
+            implementation=ImplementationRef(
+                backend="transformers",
+                protocol="blip-cross-attention-scalar-reward",
+                model="THUDM/ImageReward",
+                model_revision="v1.0",
+            ),
+            aggregation=("arithmetic_mean_for_directory_inputs",),
+            dependencies=("timm", "transformers", "torch"),
+            citations=(
+                "Xu et al., ImageReward: Learning and Evaluating Human "
+                "Preferences for Text-to-Image Generation, NeurIPS 2023",
+            ),
+            docs_path="docs/image-reward.md",
         ),
         MetricSpec(
             id="kid",
@@ -285,6 +368,32 @@ METRIC_REGISTRY = MetricRegistry(
             dependencies=("torch",),
             citations=("Wang et al., IEEE TIP 2004",),
             docs_path="docs/pairwise-fidelity.md",
+        ),
+        MetricSpec(
+            id="vqascore",
+            display_name="VQAScore",
+            tasks=("text_to_image", "subject_driven_generation"),
+            objectives=("alignment", "compositionality"),
+            inputs=_IMAGE_PROMPT,
+            score_direction="higher_is_better",
+            implementation=ImplementationRef(
+                backend="transformers",
+                protocol="visual-question-answering-posterior-probability",
+                model="zhiqiulin/clip-flant5-xl",
+                model_revision="3b4a6b1",
+            ),
+            aggregation=("arithmetic_mean_for_directory_inputs",),
+            dependencies=(
+                "accelerate",
+                "sentencepiece",
+                "transformers",
+                "torch",
+            ),
+            citations=(
+                "Lin et al., VQAScore: Evaluating Text-to-Visual Generation "
+                "with Image-to-Text Generation, ECCV 2024",
+            ),
+            docs_path="docs/vqascore.md",
         ),
     )
 )

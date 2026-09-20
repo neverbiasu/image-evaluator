@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "image-evaluator"
-version = "0.5.0"
+version = "0.6.0"
 description = "An automatic image evaluation script"
 authors = ["neverbiasu"]
 license = "MIT"
@@ -21,6 +21,14 @@ tqdm = "*"
 lpips = "*"
 scikit-image = "*"
 clean-fid = "==0.1.35"
+accelerate = { version = ">=0.26.0", optional = true }
+sentencepiece = { version = ">=0.1.99", optional = true }
+timm = { version = ">=0.9.0", optional = true }
+
+[tool.poetry.extras]
+vqa = ["accelerate", "sentencepiece"]
+preference = ["timm"]
+modern = ["accelerate", "sentencepiece", "timm"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.0.0"
