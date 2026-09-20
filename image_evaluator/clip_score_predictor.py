@@ -54,17 +54,54 @@ class DummyDataset(Dataset):
             self.real_folder = [r for r, _ in self._pairs]
             self.fake_folder = [f for _, f in self._pairs]
         elif real_is_dir:
-            self._mode = "broadcast_fake"
             mapping = collect_flat_dir(
                 real_path, allowed_exts_for_flag(real_flag)
             )
             self._real_list = [mapping[s] for s in sorted(mapping)]
-            self._fake_scalar = fake_path
-            if isinstance(fake_path, str) and osp.isfile(fake_path):
+            if isinstance(fake_path, list):
+                if len(fake_path) != len(self._real_list):
+                    raise ValueError(
+                        f"Number of prompts ({len(fake_path)}) does not "
+                        f"match number of images ({len(self._real_list)}) "
+                        f"in '{real_path}'"
+                    )
+                self._mode = "paired_list"
+                self._fake_list = fake_path
+                self.real_folder = list(self._real_list)
+                self.fake_folder = list(fake_path)
+            elif (
+                isinstance(fake_path, (str, os.PathLike))
+                and osp.isfile(fake_path)
+            ):
                 if not os.access(fake_path, os.R_OK):
                     raise OSError(f"Unreadable file: {fake_path}")
-            self.real_folder = list(self._real_list)
-            self.fake_folder = fake_path
+                try:
+                    with open(fake_path, "r", encoding="utf-8") as f:
+                        lines = [
+                            line.strip() for line in f if line.strip()
+                        ]
+                except UnicodeDecodeError:
+                    with open(fake_path, "r", encoding="latin-1") as f:
+                        lines = [
+                            line.strip() for line in f if line.strip()
+                        ]
+                if len(lines) == len(self._real_list):
+                    self._mode = "paired_list"
+                    self._fake_list = lines
+                    self.real_folder = list(self._real_list)
+                    self.fake_folder = list(lines)
+                else:
+                    self._mode = "broadcast_fake"
+                    self._fake_scalar = (
+                        " ".join(lines) if lines else ""
+                    )
+                    self.real_folder = list(self._real_list)
+                    self.fake_folder = self._fake_scalar
+            else:
+                self._mode = "broadcast_fake"
+                self._fake_scalar = fake_path
+                self.real_folder = list(self._real_list)
+                self.fake_folder = fake_path
         elif fake_is_dir:
             self._mode = "broadcast_real"
             mapping = collect_flat_dir(
@@ -84,8 +121,8 @@ class DummyDataset(Dataset):
         # assert self._check()
 
     def __len__(self):
-        if self._mode == "paired":
-            return len(self._pairs)
+        if self._mode in ("paired", "paired_list"):
+            return len(self.real_folder)
         if self._mode == "broadcast_fake":
             return len(self._real_list)
         if self._mode == "broadcast_real":
@@ -97,6 +134,9 @@ class DummyDataset(Dataset):
             raise IndexError
         if self._mode == "paired":
             real_path, fake_path = self._pairs[index]
+        elif self._mode == "paired_list":
+            real_path = self._real_list[index]
+            fake_path = self._fake_list[index]
         elif self._mode == "broadcast_fake":
             real_path = self._real_list[index]
             fake_path = self._fake_scalar
@@ -130,7 +170,9 @@ class DummyDataset(Dataset):
         return img
 
     def _load_txt(self, path):
-        if osp.exists(path):
+        if isinstance(path, list):
+            data = path[0] if path else ""
+        elif isinstance(path, (str, os.PathLike)) and osp.exists(path):
             try:
                 # 首先尝试使用UTF-8编码
                 with open(path, "r", encoding="utf-8") as fp:
@@ -140,7 +182,7 @@ class DummyDataset(Dataset):
                 with open(path, "r", encoding="latin-1") as fp:
                     data = fp.read()
         else:
-            data = path
+            data = str(path)
         if self.transform is not None:
             # Truncate long text to fit CLIP max token length.
             data = self.tokenizer(
@@ -214,10 +256,11 @@ class ClipScorePredictor:
         """
         # Check if it's a single file or in-memory image
         is_mem = not isinstance(real_path, (str, os.PathLike))
-        if is_mem or (
-            os.path.isfile(real_path)
-            and (not os.path.exists(fake_path) or os.path.isfile(fake_path))
-        ):
+        is_single_real = is_mem or (
+            isinstance(real_path, (str, os.PathLike))
+            and osp.isfile(real_path)
+        )
+        if is_single_real:
             return self._evaluate_single_file(
                 real_path, fake_path, real_flag, fake_flag
             )
@@ -328,11 +371,18 @@ class ClipScorePredictor:
 
             pil_img = to_pil_image(img_path)
             img_data = self.processor(images=pil_img, return_tensors="pt")
-            if isinstance(txt_path, str) and not os.path.exists(txt_path):
-                txt_content = txt_path
-            else:
-                with open(txt_path, "r") as f:
+            if isinstance(txt_path, list):
+                txt_content = txt_path[0] if txt_path else ""
+            elif (
+                isinstance(txt_path, (str, os.PathLike))
+                and not os.path.exists(txt_path)
+            ):
+                txt_content = str(txt_path)
+            elif isinstance(txt_path, (str, os.PathLike)):
+                with open(txt_path, "r", encoding="utf-8") as f:
                     txt_content = f.read().strip()
+            else:
+                txt_content = str(txt_path)
             txt_data = self.tokenizer(
                 txt_content,
                 padding=True,

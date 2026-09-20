@@ -116,7 +116,14 @@ class ClipIPredictor:
     def _prepare_image(self, image: Any) -> torch.Tensor:
         """Transform input image into preprocessed tensor for ViT-L/14."""
         if isinstance(image, (str, os.PathLike)):
-            with Image.open(image) as pil_img:
+            img_path = str(image)
+            if not os.path.exists(img_path):
+                raise FileNotFoundError(f"Image not found: '{img_path}'")
+            if os.path.isdir(img_path):
+                raise ValueError(
+                    f"Expected single image file, got directory: '{img_path}'"
+                )
+            with Image.open(img_path) as pil_img:
                 rgb_img = pil_img.convert("RGB")
                 tensor = self.preprocess(rgb_img).unsqueeze(0)
                 return tensor.to(self.device)
@@ -124,7 +131,7 @@ class ClipIPredictor:
             rgb_img = image.convert("RGB")
             tensor = self.preprocess(rgb_img).unsqueeze(0)
             return tensor.to(self.device)
-        if isinstance(image, torch.Tensor):
+        if isinstance(image, (torch.Tensor, np.ndarray)):
             from image_evaluator._input_adapters import to_pil_image
 
             pil_img = to_pil_image(image)
@@ -132,7 +139,7 @@ class ClipIPredictor:
             return tensor.to(self.device)
         raise TypeError(
             f"Unsupported image input type: {type(image).__name__}. "
-            "Expected str path, PIL.Image.Image, or torch.Tensor."
+            "Expected str path, PIL.Image.Image, np.ndarray, or torch.Tensor."
         )
 
     def compute_clip_i_similarity(

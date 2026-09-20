@@ -556,17 +556,18 @@ def main(args=None):
         except ImportError:
             pass
 
-    if (
-        parsed_args.prompt is not None
-        and not is_folder
-        and os.path.isfile(parsed_args.prompt)
-    ):
+    if parsed_args.prompt is not None and os.path.isfile(parsed_args.prompt):
         try:
             with open(parsed_args.prompt, "r", encoding="utf-8") as f:
-                parsed_args.prompt = f.read().strip()
+                content = f.read()
         except UnicodeDecodeError:
             with open(parsed_args.prompt, "r", encoding="latin-1") as f:
-                parsed_args.prompt = f.read().strip()
+                content = f.read()
+        lines = [line.strip() for line in content.splitlines() if line.strip()]
+        if is_folder and len(lines) > 1:
+            parsed_args.prompt = lines
+        else:
+            parsed_args.prompt = content.strip()
 
     if (
         parsed_args.prompt_src is not None

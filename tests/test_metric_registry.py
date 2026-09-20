@@ -76,7 +76,10 @@ def test_vqascore_has_approved_registry_metadata():
         == "visual-question-answering-posterior-probability"
     )
     assert metric.implementation.model == "zhiqiulin/clip-flant5-xl"
-    assert metric.implementation.model_revision == "3b4a6b1"
+    assert (
+        metric.implementation.model_revision
+        == "3b4a6b1b618f4e286f5353b5b5147a3ae7d9ec55"
+    )
     assert metric.aggregation == ("arithmetic_mean_for_directory_inputs",)
     assert metric.dependencies == (
         "accelerate",
@@ -101,7 +104,10 @@ def test_image_reward_has_approved_contract_and_metadata():
         == "blip-cross-attention-scalar-reward"
     )
     assert metric.implementation.model == "THUDM/ImageReward"
-    assert metric.implementation.model_revision == "v1.0"
+    assert (
+        metric.implementation.model_revision
+        == "5736be03b2652728fb87788c9797b0570450ab72"
+    )
     assert metric.aggregation == ("arithmetic_mean_for_directory_inputs",)
     assert metric.dependencies == ("timm", "transformers", "torch")
     assert metric.docs_path == "docs/image-reward.md"
@@ -118,7 +124,10 @@ def test_hpsv2_has_approved_contract_and_metadata():
     assert metric.implementation.backend == "open_clip"
     assert metric.implementation.protocol == "hps-v2.1-cosine-score"
     assert metric.implementation.model == "xswu/HPSv2"
-    assert metric.implementation.model_revision == "v2.1"
+    assert (
+        metric.implementation.model_revision
+        == "697403c78157020a1ae59d23f111aa58ced35b0a"
+    )
     assert metric.aggregation == ("arithmetic_mean_for_directory_inputs",)
 
 
@@ -136,7 +145,10 @@ def test_dino_similarity_has_approved_contract_and_metadata():
         == "cls-token-cosine-similarity"
     )
     assert metric.implementation.model == "facebook/dinov2-base"
-    assert metric.implementation.model_revision == "f9e44c8"
+    assert (
+        metric.implementation.model_revision
+        == "f9e44c814b77203eaa57a6bdbbd535f21ede1415"
+    )
     assert metric.aggregation == ("arithmetic_mean_for_directory_inputs",)
 
 

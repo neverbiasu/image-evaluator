@@ -8,9 +8,10 @@ Verifies:
 5. ModelAsset revisions are pinned and passed to Hugging Face loaders.
 """
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
+import torch
 from PIL import Image
 
 from image_evaluator.clip_i_predictor import _is_clip_i_cached
@@ -74,10 +75,10 @@ def test_dinov2_cache_requires_both_weights_and_processor():
 
 
 def test_model_asset_revisions_pinned():
-    """Model assets must have explicit commit SHA revisions."""
+    """Model assets must have explicit 40-character commit SHA revisions."""
     assert len(DINO_SIMILARITY_ASSET.revision) == 40
-    assert len(HPSV2_ASSET.revision) >= 7
-    assert len(IMAGE_REWARD_ASSET.revision) >= 7
+    assert len(HPSV2_ASSET.revision) == 40
+    assert len(IMAGE_REWARD_ASSET.revision) == 40
     assert len(VQA_SCORE_ASSET.revision) == 40
 
 
@@ -137,3 +138,128 @@ def test_folder_evaluation_with_prompt_file_lines(tmp_path):
     score = hps_pred.evaluate_folder_hpsv2(str(folder), str(prompt_file))
     assert score == pytest.approx(0.75)
     assert recorded_prompts == ["first prompt", "second prompt"]
+
+
+def test_dinov2_cache_requires_config_json():
+    """_is_dinov2_cached must fail if config.json is missing."""
+
+    def fake_cache(repo_id, filename, revision=None):
+        if filename == "model.safetensors":
+            return "/path/to/model.safetensors"
+        if filename == "preprocessor_config.json":
+            return "/path/to/preprocessor_config.json"
+        if filename == "config.json":
+            return None
+        return None
+
+    with patch("os.path.exists", return_value=True), patch(
+        "huggingface_hub.try_to_load_from_cache", side_effect=fake_cache
+    ):
+        assert _is_dinov2_cached() is False
+
+
+def test_clip_i_and_dinov2_accept_numpy_arrays():
+    """ClipI and DinoSimilarity _prepare_image accept np.ndarray."""
+    import numpy as np
+
+    from image_evaluator.clip_i_predictor import ClipIPredictor
+    from image_evaluator.dino_similarity_predictor import (
+        DinoSimilarityPredictor,
+    )
+
+    arr = np.zeros((32, 32, 3), dtype=np.uint8)
+
+    clip_i = ClipIPredictor.__new__(ClipIPredictor)
+    clip_i.device = "cpu"
+    clip_i.preprocess = MagicMock(
+        return_value=torch.zeros((3, 224, 224), dtype=torch.float32)
+    )
+    t_clip = clip_i._prepare_image(arr)
+    assert t_clip.shape == (1, 3, 224, 224)
+
+    dino = DinoSimilarityPredictor.__new__(DinoSimilarityPredictor)
+    dino.device = "cpu"
+    dino.processor = MagicMock(
+        return_value={"pixel_values": torch.zeros((1, 3, 224, 224))}
+    )
+    t_dino = dino._prepare_image(arr)
+    assert t_dino.shape == (1, 3, 224, 224)
+
+
+def test_clip_dummy_dataset_supports_prompt_list_and_file(tmp_path):
+    """DummyDataset in clip_score_predictor handles list and file prompts."""
+    from image_evaluator.clip_score_predictor import DummyDataset
+
+    img_dir = tmp_path / "images"
+    img_dir.mkdir()
+    (img_dir / "img1.png").write_bytes(b"")
+    (img_dir / "img2.png").write_bytes(b"")
+
+    # 1. Test list of prompts matching image count
+    ds_list = DummyDataset(
+        real_path=str(img_dir),
+        fake_path=["prompt 1", "prompt 2"],
+        real_flag="img",
+        fake_flag="txt",
+    )
+    assert len(ds_list) == 2
+    assert ds_list.fake_folder == ["prompt 1", "prompt 2"]
+
+    # 2. Test list of prompts mismatching image count
+    with pytest.raises(ValueError, match="does not match"):
+        DummyDataset(
+            real_path=str(img_dir),
+            fake_path=["only one prompt"],
+            real_flag="img",
+            fake_flag="txt",
+        )
+
+    # 3. Test prompt file with matching lines
+    pfile = tmp_path / "prompts.txt"
+    pfile.write_text("prompt A\nprompt B\n")
+    ds_file = DummyDataset(
+        real_path=str(img_dir),
+        fake_path=str(pfile),
+        real_flag="img",
+        fake_flag="txt",
+    )
+    assert len(ds_file) == 2
+    assert ds_file.fake_folder == ["prompt A", "prompt B"]
+
+
+def test_cli_folder_prompt_file_resolution(tmp_path):
+    """CLI passes prompt lines as list[str] when evaluating a folder."""
+    img_dir = tmp_path / "images"
+    img_dir.mkdir()
+    img1 = img_dir / "img1.png"
+    img2 = img_dir / "img2.png"
+    Image.new("RGB", (64, 64), color=(0, 0, 0)).save(img1)
+    Image.new("RGB", (64, 64), color=(0, 0, 0)).save(img2)
+
+    prompt_file = tmp_path / "prompts.txt"
+    prompt_file.write_text("first line\nsecond line\n")
+
+    recorded_prompt = []
+
+    def mock_evaluate_folder(self, folder, prompt):
+        recorded_prompt.append(prompt)
+        res = MagicMock()
+        res.mean_score = 0.9
+        return res
+
+    with patch.object(
+        PickScorePredictor, "evaluate_folder", mock_evaluate_folder
+    ):
+        code = cli(
+            [
+                "--metrics",
+                "pickscore",
+                "--image",
+                str(img_dir),
+                "--prompt",
+                str(prompt_file),
+            ]
+        )
+        assert code == 0
+        assert recorded_prompt == [["first line", "second line"]]
+

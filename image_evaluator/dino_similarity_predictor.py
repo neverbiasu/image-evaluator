@@ -32,7 +32,7 @@ DINO_SIMILARITY_ASSET = ModelAsset(
 
 def _is_dinov2_cached(
     model_id: str = "facebook/dinov2-base",
-    revision: str | None = "f9e44c8",
+    revision: str | None = DINO_SIMILARITY_ASSET.revision,
 ) -> bool:
     """Check if model weights and configs are cached locally in HF cache."""
     try:
@@ -53,7 +53,15 @@ def _is_dinov2_cached(
         proc_path = try_to_load_from_cache(
             model_id, "preprocessor_config.json", revision=revision
         )
-        return bool(isinstance(proc_path, str) and os.path.exists(proc_path))
+        if not (isinstance(proc_path, str) and os.path.exists(proc_path)):
+            return False
+
+        config_path = try_to_load_from_cache(
+            model_id, "config.json", revision=revision
+        )
+        return bool(
+            isinstance(config_path, str) and os.path.exists(config_path)
+        )
     except Exception:
         return False
 
@@ -108,7 +116,14 @@ class DinoSimilarityPredictor:
     def _prepare_image(self, image: Any) -> torch.Tensor:
         """Transform input image into preprocessed tensor for DINOv2."""
         if isinstance(image, (str, os.PathLike)):
-            with Image.open(image) as pil_img:
+            img_path = str(image)
+            if not os.path.exists(img_path):
+                raise FileNotFoundError(f"Image not found: '{img_path}'")
+            if os.path.isdir(img_path):
+                raise ValueError(
+                    f"Expected single image file, got directory: '{img_path}'"
+                )
+            with Image.open(img_path) as pil_img:
                 rgb_img = pil_img.convert("RGB")
                 inputs = self.processor(images=rgb_img, return_tensors="pt")
                 return inputs["pixel_values"].to(self.device)
@@ -116,7 +131,7 @@ class DinoSimilarityPredictor:
             rgb_img = image.convert("RGB")
             inputs = self.processor(images=rgb_img, return_tensors="pt")
             return inputs["pixel_values"].to(self.device)
-        if isinstance(image, torch.Tensor):
+        if isinstance(image, (torch.Tensor, np.ndarray)):
             from image_evaluator._input_adapters import to_pil_image
 
             pil_img = to_pil_image(image)
@@ -124,7 +139,7 @@ class DinoSimilarityPredictor:
             return inputs["pixel_values"].to(self.device)
         raise TypeError(
             f"Unsupported image input type: {type(image).__name__}. "
-            "Expected str path, PIL.Image.Image, or torch.Tensor."
+            "Expected str path, PIL.Image.Image, np.ndarray, or torch.Tensor."
         )
 
     def compute_dino_similarity(self, image1: Any, image2: Any) -> float:

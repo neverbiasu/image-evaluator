@@ -25,7 +25,7 @@ HPSV2_ASSET = ModelAsset(
     metric_id="hpsv2",
     model_id="xswu/HPSv2",
     source="huggingface",
-    revision="697403c",
+    revision="697403c78157020a1ae59d23f111aa58ced35b0a",
     estimated_download_bytes=1972490005,
     install_extra="preference",
 )

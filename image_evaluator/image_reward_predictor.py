@@ -34,7 +34,7 @@ IMAGE_REWARD_ASSET = ModelAsset(
     metric_id="image_reward",
     model_id="THUDM/ImageReward",
     source="huggingface",
-    revision="5736be0",
+    revision="5736be03b2652728fb87788c9797b0570450ab72",
     estimated_download_bytes=1786880927,
     install_extra="preference",
 )
