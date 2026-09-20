@@ -6,7 +6,7 @@
 | :--- | :--- |
 | **Category** | Human Preference & Text-Image Alignment |
 | **CLI Metric** | `hpsv2` |
-| **Inputs** | `--image` (file or directory), `--prompt` (string) |
+| **Inputs** | `--image` (file or directory), `--prompt` (string, prompt file path, or sequence of prompts) |
 | **Output** | Raw cosine similarity scalar in `[-1.0, 1.0]` (typical range `[0.15, 0.40]`) |
 | **Direction** | Higher is better |
 | **Model** | OpenCLIP ViT-H-14 fine-tuned checkpoint (`HPS_v2.1_compressed.pt`) |
@@ -47,9 +47,13 @@ Single image evaluation:
 image-evaluator --metrics hpsv2 --image path/to/generated.png --prompt "a cute red panda wearing glasses"
 ```
 
-Directory-level evaluation (arithmetic mean across all images):
+Directory-level evaluation (broadcast single prompt or map line-by-line prompt file):
 ```bash
+# Broadcast single prompt across folder:
 image-evaluator --metrics hpsv2 --image path/to/folder/ --prompt "a photo of an astronaut on Mars"
+
+# Map one prompt per image from a text file:
+image-evaluator --metrics hpsv2 --image path/to/folder/ --prompt path/to/prompts.txt
 ```
 
 Explicit opt-in for downloading uncached model weights:
@@ -83,6 +87,14 @@ result = evaluate_detailed(
     prompt="a digital painting of a mountain landscape",
 )
 print(f"HPS v2.1: {result.scores['hpsv2']:.4f} (took {result.duration_seconds:.3f}s)")
+
+# 3. Directory evaluation with line-mapped prompt file or list of prompts
+res_folder = evaluate(
+    metrics="hpsv2",
+    image="path/to/folder/",
+    prompt=["first image prompt", "second image prompt"],
+)
+print("Directory HPS v2.1 Mean:", res_folder["hpsv2"])
 ```
 
 Low-level predictor:

@@ -263,3 +263,68 @@ def test_cli_folder_prompt_file_resolution(tmp_path):
         assert code == 0
         assert recorded_prompt == [["first line", "second line"]]
 
+
+def test_directional_clip_text_features_non_string_guard():
+    """_get_text_features handles list and non-string inputs safely."""
+    from image_evaluator.directional_clip_predictor import (
+        DirectionalClipPredictor,
+    )
+
+    pred = DirectionalClipPredictor.__new__(DirectionalClipPredictor)
+    pred.device = "cpu"
+    mock_tok = MagicMock()
+    mock_tok.return_value = {
+        "input_ids": torch.zeros((1, 10), dtype=torch.long)
+    }
+    pred.tokenizer = mock_tok
+    mock_model = MagicMock()
+    mock_model.get_text_features.return_value = torch.ones(
+        (1, 512), dtype=torch.float32
+    )
+    pred.model = mock_model
+
+    # 1. Non-path string
+    feat = pred._get_text_features("a cute dog")
+    assert feat.shape == (1, 512)
+
+    # 2. List of strings
+    feat_list = pred._get_text_features(
+        ["first prompt", "second prompt"]  # type: ignore[arg-type]
+    )
+    assert feat_list.shape == (1, 512)
+
+
+def test_core_evaluate_accepts_sequence_of_prompts(tmp_path):
+    """core.py evaluate and evaluate_detailed accept Sequence[str] prompts."""
+    from image_evaluator.core import evaluate, evaluate_detailed
+
+    img_dir = tmp_path / "test_imgs"
+    img_dir.mkdir()
+    Image.new("RGB", (32, 32)).save(img_dir / "a.png")
+    Image.new("RGB", (32, 32)).save(img_dir / "b.png")
+
+    prompts = ("a red fox", "a blue bird")
+
+    def mock_eval_folder(self, folder, prompt):
+        res = MagicMock()
+        res.mean_score = 0.88
+        return res
+
+    with patch.object(
+        PickScorePredictor, "evaluate_folder", mock_eval_folder
+    ):
+        res_dict = evaluate(
+            metrics="pickscore",
+            image=str(img_dir),
+            prompt=prompts,
+        )
+        assert res_dict["pickscore"] == 0.88
+
+        res_detailed = evaluate_detailed(
+            metrics="pickscore",
+            image=str(img_dir),
+            prompt=list(prompts),
+        )
+        assert res_detailed.scores["pickscore"] == 0.88
+
+

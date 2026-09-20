@@ -1,4 +1,5 @@
 import os
+from collections.abc import Sequence
 from typing import Any
 
 import numpy as np
@@ -310,13 +311,13 @@ class PickScorePredictor:
         )
 
     def evaluate_folder(
-        self, folder_path: str, prompt: str | list[str]
+        self, folder_path: str, prompt: str | Sequence[str]
     ) -> PickScoreResult:
         """Evaluate PickScore for all images in folder against a prompt.
 
         Args:
             folder_path: Path to folder containing images.
-            prompt: Text prompt, list of prompts, or path to prompt file.
+            prompt: Text prompt, sequence of prompts, or path to prompt file.
 
         Returns:
             PickScoreResult: Summary containing mean score, individual scores,
@@ -331,13 +332,17 @@ class PickScorePredictor:
         # Pre-load model once for entire folder
         self._load_model()
 
-        if isinstance(prompt, list):
-            if len(prompt) != len(image_paths):
+        if isinstance(prompt, (list, tuple)) or (
+            isinstance(prompt, Sequence)
+            and not isinstance(prompt, (str, bytes, os.PathLike))
+        ):
+            prompt_seq = list(prompt)
+            if len(prompt_seq) != len(image_paths):
                 raise ValueError(
-                    f"Number of prompts ({len(prompt)}) does not match "
+                    f"Number of prompts ({len(prompt_seq)}) does not match "
                     f"number of images ({len(image_paths)})"
                 )
-            prompts = prompt
+            prompts = prompt_seq
         elif isinstance(prompt, str) and os.path.isfile(prompt):
             with open(prompt, "r", encoding="utf-8") as f:
                 lines = [line.strip() for line in f if line.strip()]

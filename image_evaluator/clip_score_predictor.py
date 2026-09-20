@@ -2,6 +2,7 @@
 
 import os
 import os.path as osp
+from collections.abc import Sequence
 
 import torch
 from PIL import Image
@@ -58,17 +59,21 @@ class DummyDataset(Dataset):
                 real_path, allowed_exts_for_flag(real_flag)
             )
             self._real_list = [mapping[s] for s in sorted(mapping)]
-            if isinstance(fake_path, list):
-                if len(fake_path) != len(self._real_list):
+            if isinstance(fake_path, (list, tuple)) or (
+                isinstance(fake_path, Sequence)
+                and not isinstance(fake_path, (str, bytes, os.PathLike))
+            ):
+                fake_list = list(fake_path)
+                if len(fake_list) != len(self._real_list):
                     raise ValueError(
-                        f"Number of prompts ({len(fake_path)}) does not "
+                        f"Number of prompts ({len(fake_list)}) does not "
                         f"match number of images ({len(self._real_list)}) "
                         f"in '{real_path}'"
                     )
                 self._mode = "paired_list"
-                self._fake_list = fake_path
+                self._fake_list = fake_list
                 self.real_folder = list(self._real_list)
-                self.fake_folder = list(fake_path)
+                self.fake_folder = list(fake_list)
             elif (
                 isinstance(fake_path, (str, os.PathLike))
                 and osp.isfile(fake_path)

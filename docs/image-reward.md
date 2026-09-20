@@ -6,7 +6,7 @@
 | :--- | :--- |
 | **Category** | Human Preference & Scalar Reward Modeling |
 | **CLI Metric** | `image_reward` |
-| **Inputs** | `--image` (file or directory), `--prompt` (string) |
+| **Inputs** | `--image` (file or directory), `--prompt` (string, prompt file path, or sequence of prompts) |
 | **Output** | Continuous scalar reward score in $\mathbb{R}$ (typical range $[-2.5, 2.5]$, mean $\approx 0$) |
 | **Direction** | Higher is better |
 | **Model** | BLIP ViT-L vision encoder + Cross-Attention Text Encoder + MLP Reward Head |
@@ -50,9 +50,13 @@ Single image evaluation:
 image-evaluator --metrics image_reward --image path/to/generated.png --prompt "a cute red panda wearing glasses"
 ```
 
-Directory-level evaluation (arithmetic mean across all images):
+Directory-level evaluation (broadcast single prompt or map line-by-line prompt file):
 ```bash
+# Broadcast single prompt across folder:
 image-evaluator --metrics image_reward --image path/to/folder/ --prompt "a photo of an astronaut on Mars"
+
+# Map one prompt per image from a text file:
+image-evaluator --metrics image_reward --image path/to/folder/ --prompt path/to/prompts.txt
 ```
 
 Explicit opt-in for downloading uncached model weights:
@@ -86,6 +90,14 @@ result = evaluate_detailed(
     prompt="a digital painting of a mountain landscape",
 )
 print(f"ImageReward: {result.scores['image_reward']:.4f} (took {result.duration_seconds:.3f}s)")
+
+# 3. Directory evaluation with line-mapped prompt file or list of prompts
+res_folder = evaluate(
+    metrics="image_reward",
+    image="path/to/folder/",
+    prompt=["first image prompt", "second image prompt"],
+)
+print("Directory ImageReward Mean:", res_folder["image_reward"])
 ```
 
 Low-level predictor:

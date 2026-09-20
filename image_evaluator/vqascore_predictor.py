@@ -13,6 +13,7 @@ References:
 
 import os
 import re
+from collections.abc import Sequence
 from typing import Any
 
 import numpy as np
@@ -635,7 +636,7 @@ class VQAScorePredictor:
         return self.compute_vqascore(image=image, prompt=prompt)
 
     def evaluate_folder_vqascore(
-        self, image_dir: str, prompt: str | list[str]
+        self, image_dir: str, prompt: str | Sequence[str]
     ) -> float:
         """Evaluate arithmetic mean VQAScore across images in directory."""
         if not os.path.exists(image_dir):
@@ -657,15 +658,19 @@ class VQAScorePredictor:
                 f"No supported image files found in '{image_dir}'"
             )
 
-        if isinstance(prompt, list):
-            if len(prompt) != len(image_paths):
+        if isinstance(prompt, (list, tuple)) or (
+            isinstance(prompt, Sequence)
+            and not isinstance(prompt, (str, bytes, os.PathLike))
+        ):
+            prompt_seq = list(prompt)
+            if len(prompt_seq) != len(image_paths):
                 raise ValueError(
-                    f"Number of prompts ({len(prompt)}) does not match "
+                    f"Number of prompts ({len(prompt_seq)}) does not match "
                     f"number of images ({len(image_paths)}) in '{image_dir}'"
                 )
             scores = [
                 self.compute_vqascore(image=p, prompt=pr)
-                for p, pr in zip(image_paths, prompt)
+                for p, pr in zip(image_paths, prompt_seq)
             ]
         elif isinstance(prompt, str) and os.path.isfile(prompt):
             with open(prompt, "r", encoding="utf-8") as f:

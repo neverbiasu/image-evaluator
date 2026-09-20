@@ -6,7 +6,7 @@
 | :--- | :--- |
 | **Category** | Visual Question Answering Alignment & Compositionality |
 | **CLI Metric** | `vqascore` |
-| **Inputs** | `--image` (file or directory), `--prompt` (string) |
+| **Inputs** | `--image` (file or directory), `--prompt` (string, prompt file path, or sequence of prompts) |
 | **Output** | Posterior probability $P(\text{"Yes"} \mid \text{Image}, \text{Text}) \in [0.0, 1.0]$ |
 | **Direction** | Higher is better |
 | **Model** | Fine-tuned CLIP-FlanT5-XL (3B) + CLIP-ViT-L/14-336 vision tower |
@@ -57,9 +57,13 @@ Single image evaluation:
 image-evaluator --metrics vqascore --image path/to/image.png --prompt "a red sports car parked in front of a modern building"
 ```
 
-Directory-level evaluation (arithmetic mean across all valid images):
+Directory-level evaluation (broadcast single prompt or map line-by-line prompt file):
 ```bash
+# Broadcast single prompt across folder:
 image-evaluator --metrics vqascore --image path/to/folder/ --prompt "a golden retriever playing in autumn leaves"
+
+# Map one prompt per image from a text file:
+image-evaluator --metrics vqascore --image path/to/folder/ --prompt path/to/prompts.txt
 ```
 
 Explicit download authorization for first-time uncached execution:
@@ -95,6 +99,14 @@ detailed_res = evaluate_detailed(
 )
 print(f"VQAScore: {detailed_res.scores['vqascore']:.6f} "
       f"(duration: {detailed_res.duration_seconds:.2f}s)")
+
+# 3. Directory evaluation with line-mapped prompt file or list of prompts
+res_folder = evaluate(
+    metrics="vqascore",
+    image="path/to/folder/",
+    prompt=["first image prompt", "second image prompt"],
+)
+print("Directory VQAScore Mean:", res_folder["vqascore"])
 ```
 
 Low-level predictor:
