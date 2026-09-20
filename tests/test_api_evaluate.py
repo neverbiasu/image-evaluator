@@ -15,7 +15,7 @@ from image_evaluator import (
 
 def test_top_level_package_exports_version():
     assert hasattr(image_evaluator, "__version__")
-    assert image_evaluator.__version__ == "0.6.0"
+    assert image_evaluator.__version__ == "0.6.1"
     for name in [
         "evaluate",
         "SSIMPredictor",
