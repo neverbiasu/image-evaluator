@@ -133,7 +133,7 @@ METRIC_REGISTRY = MetricRegistry(
                 "https://arxiv.org/abs/2104.08718",
                 "https://github.com/Taited/clip-score",
             ),
-            docs_path="docs/clip-similarity.md",
+            docs_path="docs/clip.md",
         ),
         MetricSpec(
             id="clip_i",
@@ -154,7 +154,7 @@ METRIC_REGISTRY = MetricRegistry(
                 "https://arxiv.org/abs/2103.00020",
                 "https://arxiv.org/abs/2208.12242",
             ),
-            docs_path="docs/clip-i-similarity.md",
+            docs_path="docs/clip-i.md",
         ),
         MetricSpec(
             id="dino_similarity",

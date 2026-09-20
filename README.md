@@ -46,8 +46,8 @@ The toolkit registers 15 core metrics backed by an immutable `MetricRegistry`. E
 | Metric ID | Display Name | Tasks | Objectives | Required Inputs | Direction | Technical Details |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | `aesthetic` | LAION Aesthetic Score | `text_to_image`, `image_editing` | `aesthetic_quality` | `image` | Higher is better | [docs/aesthetic-score.md](docs/aesthetic-score.md) |
-| `clip` | CLIP Score | `text_to_image`, `image_editing` | `text_image_alignment` | `image`, `prompt` | Higher is better | [docs/clip-similarity.md](docs/clip-similarity.md) |
-| `clip_i` | CLIP Image-Image Similarity | `image_editing`, `subject_driven_generation` | `fidelity`, `identity_preservation` | `image`, `reference_image` | Higher is better | [docs/clip-i-similarity.md](docs/clip-i-similarity.md) |
+| `clip` | CLIP Score | `text_to_image`, `image_editing` | `text_image_alignment` | `image`, `prompt` | Higher is better | [docs/clip.md](docs/clip.md) |
+| `clip_i` | CLIP Image-Image Similarity | `image_editing`, `subject_driven_generation` | `fidelity`, `identity_preservation` | `image`, `reference_image` | Higher is better | [docs/clip-i.md](docs/clip-i.md) |
 | `dino_similarity` | DINOv2 Image-Image Similarity | `image_editing`, `subject_driven_generation` | `fidelity`, `structural_similarity` | `image`, `reference_image` | Higher is better | [docs/dino-similarity.md](docs/dino-similarity.md) |
 | `directional_clip` | Directional CLIP | `image_editing` | `edit_direction_alignment` | `image`, `reference_image`, `prompt`, `source_prompt` | Higher is better | [docs/directional-clip.md](docs/directional-clip.md) |
 | `arcface` | ArcFace Distance | `face_generation`, `face_editing` | `identity_preservation` | `image`, `reference_image` | Lower is better | [docs/arcface-distance.md](docs/arcface-distance.md) |

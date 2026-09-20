@@ -1,3 +1,4 @@
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -168,6 +169,7 @@ def test_clip_i_has_approved_contract_and_metadata():
     assert metric.implementation.model == "openai/clip-vit-large-patch14"
     assert metric.implementation.model_revision == "openai"
     assert metric.aggregation == ("arithmetic_mean_for_directory_inputs",)
+    assert metric.docs_path == "docs/clip-i.md"
 
 
 def test_directional_clip_has_approved_four_input_contract():
@@ -294,10 +296,19 @@ def test_traceability_fields_use_confirmed_registry_values():
     assert fid.docs_path == "docs/fid.md"
     assert clip.implementation.backend_version is None
     assert clip.implementation.model_revision is None
+    assert clip.docs_path == "docs/clip.md"
     assert clip.citations == (
         "https://arxiv.org/abs/2104.08718",
         "https://github.com/Taited/clip-score",
     )
+
+
+def test_all_metric_docs_paths_exist_on_disk():
+    for metric in list_metrics():
+        assert os.path.isfile(metric.docs_path), (
+            f"Doc file '{metric.docs_path}' for metric '{metric.id}' "
+            "not found on disk"
+        )
 
 
 def test_custom_open_vocabulary_terms_require_no_enum_change():
