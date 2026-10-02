@@ -5,6 +5,7 @@ import os.path as osp
 
 IMAGE_EXTS = frozenset({".png", ".jpg", ".jpeg", ".bmp", ".webp"})
 TEXT_EXTS = frozenset({".txt"})
+SIDECAR_EXTS = frozenset({".json", ".yaml", ".yml"})
 
 
 def _visible_names(folder):
@@ -25,7 +26,10 @@ def collect_flat_dir(folder, allowed_exts):
         full = osp.join(folder, name)
         if not osp.isfile(full):
             raise ValueError(f"Unsupported entry (not a flat file): {full}")
-        if osp.splitext(name)[1].lower() not in allowed_exts:
+        ext = osp.splitext(name)[1].lower()
+        if ext in SIDECAR_EXTS:
+            continue
+        if ext not in allowed_exts:
             raise ValueError(f"Unsupported file: {full}")
         if not os.access(full, os.R_OK):
             raise OSError(f"Unreadable file: {full}")
@@ -33,6 +37,12 @@ def collect_flat_dir(folder, allowed_exts):
         if stem in mapping:
             raise ValueError(f"Duplicate stem {stem!r} in {folder}")
         mapping[stem] = full
+    if not mapping:
+        exts_str = sorted(allowed_exts)
+        raise ValueError(
+            f"No supported files matching extensions {exts_str} "
+            f"found in {folder}"
+        )
     return mapping
 
 

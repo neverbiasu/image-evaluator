@@ -13,6 +13,7 @@ from PIL import Image
 import image_evaluator
 from image_evaluator.image_reward_predictor import (
     ImageRewardPredictor,
+    _get_bert_tokenizer_cached_path,
 )
 from image_evaluator.main import main
 from image_evaluator.model_assets import DownloadNotAllowedError
@@ -341,14 +342,11 @@ def test_cli_missing_prompt_fails(sample_image):
 def test_download_gating_tokenizer_uncached_raises_error(sample_image):
     """Verify uncached tokenizer raises DownloadNotAllowedError."""
     with patch(
-        "image_evaluator.image_reward_predictor._is_image_reward_cached",
-        return_value=True,
-    ), patch(
         "image_evaluator.image_reward_predictor._get_image_reward_cached_path",
         return_value="/fake/ImageReward.pt",
     ), patch(
-        "image_evaluator.image_reward_predictor._is_bert_tokenizer_cached",
-        return_value=False,
+        "image_evaluator.image_reward_predictor._get_bert_tokenizer_cached_path",
+        return_value=None,
     ):
         predictor = ImageRewardPredictor(allow_download=False)
         with pytest.raises(DownloadNotAllowedError) as exc_info:
@@ -358,6 +356,72 @@ def test_download_gating_tokenizer_uncached_raises_error(sample_image):
         assert "bert-base-uncased" in msg
         assert "image_reward" in msg
         assert "--allow-download" in msg
+
+
+def test_tokenizer_cache_rejects_vocab_only(tmp_path):
+    """A lone vocab file is not a complete pinned tokenizer snapshot."""
+    vocab = tmp_path / "vocab.txt"
+    vocab.touch()
+    with patch(
+        "huggingface_hub.try_to_load_from_cache",
+        return_value=str(vocab),
+    ):
+        assert _get_bert_tokenizer_cached_path() is None
+
+
+def test_tokenizer_partial_cache_discloses_before_snapshot_download(tmp_path):
+    """A permitted tokenizer repair must disclose before fetching files."""
+    checkpoint = tmp_path / "ImageReward.pt"
+    checkpoint.touch()
+    disclosures = []
+    predictor = ImageRewardPredictor(
+        checkpoint_path=str(checkpoint),
+        allow_download=True,
+        download_callback=lambda asset, message: disclosures.append(asset),
+    )
+
+    with patch(
+        "image_evaluator.image_reward_predictor."
+        "_get_bert_tokenizer_cached_path",
+        return_value=None,
+    ), patch(
+        "huggingface_hub.snapshot_download",
+        side_effect=RuntimeError("snapshot requested"),
+    ) as download:
+        with pytest.raises(RuntimeError, match="snapshot requested"):
+            predictor._ensure_loaded()
+
+    assert [asset.model_id for asset in disclosures] == [
+        "bert-base-uncased"
+    ]
+    download.assert_called_once()
+
+
+def test_failed_tokenizer_load_does_not_poison_retry(tmp_path):
+    """A failed lazy load must leave the predictor retryable."""
+    checkpoint = tmp_path / "ImageReward.pt"
+    checkpoint.touch()
+    predictor = ImageRewardPredictor(checkpoint_path=str(checkpoint))
+
+    with patch(
+        "image_evaluator.image_reward_predictor._get_bert_tokenizer_cached_path",
+        return_value="/fake/tokenizer",
+    ), patch(
+        "image_evaluator.image_reward_predictor._build_image_reward_model",
+        return_value=_DummyBackboneForLoad(),
+    ), patch(
+        "torch.load",
+        return_value=_DummyBackboneForLoad().state_dict(),
+    ), patch(
+        "transformers.BertTokenizer.from_pretrained",
+        side_effect=RuntimeError("tokenizer load failed"),
+    ):
+        with pytest.raises(RuntimeError, match="tokenizer load failed"):
+            predictor._ensure_loaded()
+
+    assert predictor._model is None
+    assert predictor._tokenizer is None
+    assert predictor._preprocess is None
 
 
 class _DummyBackboneForLoad(torch.nn.Module):
@@ -380,8 +444,8 @@ def test_load_state_dict_missing_keys_raises_error(tmp_path):
         "image_evaluator.image_reward_predictor._build_image_reward_model",
         return_value=_DummyBackboneForLoad(),
     ), patch(
-        "image_evaluator.image_reward_predictor._is_bert_tokenizer_cached",
-        return_value=True,
+        "image_evaluator.image_reward_predictor._get_bert_tokenizer_cached_path",
+        return_value="/fake/tokenizer",
     ), patch("transformers.BertTokenizer.from_pretrained") as mock_tok:
         tok_inst = _DummyTokenizer()
         tok_inst.enc_token_id = 30523
@@ -409,8 +473,8 @@ def test_load_state_dict_unexpected_keys_raises_error(tmp_path):
         "image_evaluator.image_reward_predictor._build_image_reward_model",
         return_value=_DummyBackboneForLoad(),
     ), patch(
-        "image_evaluator.image_reward_predictor._is_bert_tokenizer_cached",
-        return_value=True,
+        "image_evaluator.image_reward_predictor._get_bert_tokenizer_cached_path",
+        return_value="/fake/tokenizer",
     ), patch("transformers.BertTokenizer.from_pretrained") as mock_tok:
         tok_inst = _DummyTokenizer()
         tok_inst.enc_token_id = 30523
@@ -440,8 +504,8 @@ def test_load_state_dict_allowed_unexpected_keys_succeeds(tmp_path):
         "image_evaluator.image_reward_predictor._build_image_reward_model",
         return_value=_DummyBackboneForLoad(),
     ), patch(
-        "image_evaluator.image_reward_predictor._is_bert_tokenizer_cached",
-        return_value=True,
+        "image_evaluator.image_reward_predictor._get_bert_tokenizer_cached_path",
+        return_value="/fake/tokenizer",
     ), patch("transformers.BertTokenizer.from_pretrained") as mock_tok:
         tok_inst = _DummyTokenizer()
         tok_inst.enc_token_id = 30523
@@ -449,4 +513,3 @@ def test_load_state_dict_allowed_unexpected_keys_succeeds(tmp_path):
         mock_tok.return_value = tok_inst
         predictor._ensure_loaded()
         assert predictor._model is not None
-

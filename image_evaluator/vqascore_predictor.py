@@ -65,6 +65,13 @@ VQA_SCORE_SUPPORTED_EXTENSIONS = {
 }
 
 
+def _snapshot_is_complete(path: str, required_files: set[str]) -> bool:
+    """Return whether a cached snapshot has every runtime-required file."""
+    return os.path.isdir(path) and all(
+        os.path.exists(os.path.join(path, name)) for name in required_files
+    )
+
+
 def _get_vqascore_cached_paths() -> tuple[str | None, str | None]:
     """Find locally cached model snapshot directories if available."""
     env_xl = os.environ.get("VQASCORE_CHECKPOINT_PATH")
@@ -86,14 +93,16 @@ def _get_vqascore_cached_paths() -> tuple[str | None, str | None]:
                     revision=VQA_SCORE_TEXT_ASSET.revision,
                 )
                 if isinstance(p1, str) and os.path.exists(p1):
-                    xl_path = os.path.dirname(p1)
-                else:
-                    p1_fb = try_to_load_from_cache(
-                        "zhiqiulin/clip-flant5-xl",
-                        "pytorch_model.bin",
-                    )
-                    if isinstance(p1_fb, str) and os.path.exists(p1_fb):
-                        xl_path = os.path.dirname(p1_fb)
+                    candidate = os.path.dirname(p1)
+                    if _snapshot_is_complete(
+                        candidate,
+                        {
+                            "config.json",
+                            "spiece.model",
+                            "tokenizer_config.json",
+                        },
+                    ):
+                        xl_path = candidate
 
             if clip_path is None:
                 p2 = try_to_load_from_cache(
@@ -102,14 +111,12 @@ def _get_vqascore_cached_paths() -> tuple[str | None, str | None]:
                     revision=VQA_SCORE_VISION_ASSET.revision,
                 )
                 if isinstance(p2, str) and os.path.exists(p2):
-                    clip_path = os.path.dirname(p2)
-                else:
-                    p2_fb = try_to_load_from_cache(
-                        "openai/clip-vit-large-patch14-336",
-                        "pytorch_model.bin",
-                    )
-                    if isinstance(p2_fb, str) and os.path.exists(p2_fb):
-                        clip_path = os.path.dirname(p2_fb)
+                    candidate = os.path.dirname(p2)
+                    if _snapshot_is_complete(
+                        candidate,
+                        {"config.json", "preprocessor_config.json"},
+                    ):
+                        clip_path = candidate
         except Exception:
             pass
 
@@ -489,7 +496,7 @@ class VQAScorePredictor:
                 ignore_patterns=["*.h5", "*.msgpack", "*.safetensors"],
             )
 
-        self._tokenizer = AutoTokenizer.from_pretrained(
+        tokenizer = AutoTokenizer.from_pretrained(
             xl_path, use_fast=False, model_max_length=2048
         )
 
@@ -501,17 +508,21 @@ class VQAScorePredictor:
             torch.float16 if self.device.type == "cuda" else torch.bfloat16
         )
 
-        self._model = model_cls.from_pretrained(
+        model = model_cls.from_pretrained(
             xl_path,
             config=config,
             torch_dtype=torch_dt,
             low_cpu_mem_usage=True,
         )
-        self._model.vision_tower.load_model()
-        self._model = self._model.to(self.device)
-        self._model.eval()
-        self._model.requires_grad_(False)
-        self._image_processor = self._model.vision_tower.image_processor
+        model.vision_tower.load_model()
+        model = model.to(self.device)
+        model.eval()
+        model.requires_grad_(False)
+        image_processor = model.vision_tower.image_processor
+
+        self._tokenizer = tokenizer
+        self._image_processor = image_processor
+        self._model = model
 
     def _prepare_image(self, image: Any) -> torch.Tensor:
         """Convert input image representation into preprocessed tensor."""

@@ -187,9 +187,43 @@ class PickScorePredictor:
         return self._model, self._processor
 
     @staticmethod
+    def _extract_tensor(features: Any) -> torch.Tensor:
+        """Extract embedding tensor from tensor, ModelOutput, or tuple."""
+        if isinstance(features, torch.Tensor):
+            return features
+        pooler = getattr(features, "pooler_output", None)
+        if isinstance(pooler, torch.Tensor):
+            return pooler
+        if isinstance(features, (tuple, list)):
+            # Real Transformers BaseModelOutputWithPooling.to_tuple() layout:
+            # index 0: last_hidden_state (3D: batch, seq_len, dim)
+            # index 1: pooler_output (2D: batch, dim)
+            if (
+                len(features) >= 2
+                and isinstance(features[1], torch.Tensor)
+                and features[1].ndim in (1, 2)
+            ):
+                return features[1]
+            if (
+                len(features) == 1
+                and isinstance(features[0], torch.Tensor)
+                and features[0].ndim in (1, 2)
+            ):
+                return features[0]
+            raise TypeError(
+                f"Unsupported tuple structure for PickScore features: "
+                f"expected pooler tensor at index 1 or single-element tuple, "
+                f"got length {len(features)}"
+            )
+        raise TypeError(
+            f"Expected torch.Tensor, ModelOutput with pooler_output, or "
+            f"Transformers output tuple, got {type(features).__name__}"
+        )
+
+    @staticmethod
     def compute_score_from_features(
-        image_features: torch.Tensor,
-        text_features: torch.Tensor,
+        image_features: Any,
+        text_features: Any,
         logit_scale: torch.Tensor | float,
     ) -> float:
         """Compute PickScore scalar from image and text feature embeddings.
@@ -198,8 +232,8 @@ class PickScorePredictor:
             score = exp(logit_scale) * (text_norm @ image_norm.T)
 
         Args:
-            image_features: Tensor of shape (1, D) or (D,).
-            text_features: Tensor of shape (1, D) or (D,).
+            image_features: Tensor or ModelOutput of shape (1, D) or (D,).
+            text_features: Tensor or ModelOutput of shape (1, D) or (D,).
             logit_scale: Model logit scale parameter (tensor or float).
 
         Returns:
@@ -208,11 +242,30 @@ class PickScorePredictor:
         Raises:
             ValueError: If inputs have dimension mismatch or output is
                 non-finite.
+            TypeError: If input features cannot be resolved to 1D/2D tensors.
         """
+        image_features = PickScorePredictor._extract_tensor(image_features)
+        text_features = PickScorePredictor._extract_tensor(text_features)
+
+        if not isinstance(image_features, torch.Tensor) or not isinstance(
+            text_features, torch.Tensor
+        ):
+            raise TypeError(
+                f"Expected torch.Tensor or ModelOutput with pooler_output, "
+                f"got image: {type(image_features).__name__}, "
+                f"text: {type(text_features).__name__}"
+            )
+
         if image_features.ndim == 1:
             image_features = image_features.unsqueeze(0)
         if text_features.ndim == 1:
             text_features = text_features.unsqueeze(0)
+
+        if image_features.ndim != 2 or text_features.ndim != 2:
+            raise ValueError(
+                f"Expected 1D or 2D feature tensors, got image: "
+                f"{image_features.ndim}D, text: {text_features.ndim}D"
+            )
 
         if image_features.shape[-1] != text_features.shape[-1]:
             raise ValueError(
@@ -302,8 +355,10 @@ class PickScorePredictor:
         }
 
         with torch.no_grad():
-            image_features = model.get_image_features(**image_inputs)
-            text_features = model.get_text_features(**text_inputs)
+            raw_img_feat = model.get_image_features(**image_inputs)
+            raw_txt_feat = model.get_text_features(**text_inputs)
+            image_features = self._extract_tensor(raw_img_feat)
+            text_features = self._extract_tensor(raw_txt_feat)
             logit_scale = model.logit_scale
 
         return self.compute_score_from_features(

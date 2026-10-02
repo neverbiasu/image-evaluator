@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -20,6 +20,7 @@ from image_evaluator.vqascore_predictor import (
     VQA_SCORE_TEXT_ASSET,
     VQA_SCORE_VISION_ASSET,
     VQAScorePredictor,
+    _snapshot_is_complete,
 )
 
 
@@ -374,3 +375,59 @@ def test_download_gating_discloses_both_assets() -> None:
     assert vis_asset.model_id == "openai/clip-vit-large-patch14-336"
     assert "1.7 GB" in vis_msg or "1715593675" in vis_msg
 
+
+def test_snapshot_completeness_rejects_weights_only(tmp_path) -> None:
+    """A weights-only cache cannot bypass asset disclosure and repair."""
+    (tmp_path / "pytorch_model.bin").touch()
+    assert not _snapshot_is_complete(
+        str(tmp_path),
+        {"config.json", "spiece.model", "tokenizer_config.json"},
+    )
+
+
+def test_cache_lookup_rejects_unpinned_fallback(tmp_path) -> None:
+    """Cache lookup must only accept the disclosed pinned revisions."""
+    from image_evaluator.vqascore_predictor import _get_vqascore_cached_paths
+
+    weight = tmp_path / "pytorch_model.bin"
+    weight.touch()
+
+    def cache_lookup(model_id, filename, revision=None):
+        if revision is None and filename == "pytorch_model.bin":
+            return str(weight)
+        return None
+
+    with patch(
+        "huggingface_hub.try_to_load_from_cache",
+        side_effect=cache_lookup,
+    ):
+        assert _get_vqascore_cached_paths() == (None, None)
+
+
+def test_failed_vision_load_does_not_poison_retry(sample_image: str) -> None:
+    """A failed vision initialization must leave the predictor retryable."""
+    predictor = VQAScorePredictor(allow_download=False)
+    fake_model = MagicMock()
+    fake_model.vision_tower.load_model.side_effect = RuntimeError(
+        "vision load failed"
+    )
+    config = MagicMock()
+
+    with patch(
+        "image_evaluator.vqascore_predictor._get_vqascore_cached_paths",
+        return_value=("/fake/text", "/fake/vision"),
+    ), patch("os.path.exists", return_value=True), patch(
+        "transformers.AutoTokenizer.from_pretrained"
+    ), patch(
+        "image_evaluator.vqascore_predictor._get_clip_t5_classes",
+        return_value=(
+            MagicMock(from_pretrained=MagicMock(return_value=config)),
+            MagicMock(from_pretrained=MagicMock(return_value=fake_model)),
+        ),
+    ):
+        with pytest.raises(RuntimeError, match="vision load failed"):
+            predictor._ensure_loaded()
+
+    assert predictor._model is None
+    assert predictor._tokenizer is None
+    assert predictor._image_processor is None
