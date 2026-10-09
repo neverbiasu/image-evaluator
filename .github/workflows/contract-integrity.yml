@@ -1,0 +1,64 @@
+name: Repository Contract Integrity
+
+on:
+  pull_request:
+  push:
+    branches:
+      - develop
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  check-consistency:
+    name: Version, Registry & Docs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal test and lint dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest ruff packaging pillow numpy
+
+      - name: Verify package version resolution matches pyproject.toml
+        run: |
+          python - <<'PY'
+          import tomllib
+          from pathlib import Path
+          import image_evaluator
+
+          with open("pyproject.toml", "rb") as f:
+              expected = tomllib.load(f)["tool"]["poetry"]["version"]
+          assert image_evaluator.__version__ == expected, (
+              f"Package version {image_evaluator.__version__!r} != pyproject {expected!r}"
+          )
+          print(f"Verified package version: {image_evaluator.__version__}")
+          PY
+
+      - name: Verify README is synchronized with MetricRegistry
+        run: python scripts/sync_readme_registry.py --check
+
+      - name: Run consistency and registry tests
+        run: |
+          PYTHONPATH=. pytest -q -p no:cacheprovider \
+            tests/test_readme_consistency.py \
+            tests/test_metric_registry.py \
+            tests/test_cli_registry.py
+
+      - name: Lint scripts, tests and registry
+        run: |
+          ruff check \
+            scripts/ \
+            image_evaluator/registry.py \
+            image_evaluator/specifications.py \
+            tests/test_readme_consistency.py \
+            tests/test_metric_registry.py \
+            tests/test_cli_registry.py

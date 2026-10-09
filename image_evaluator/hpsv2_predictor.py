@@ -73,10 +73,6 @@ def _get_hpsv2_cached_path() -> str | None:
     return None
 
 
-def _is_hpsv2_cached() -> bool:
-    """Return True if HPS v2.1 checkpoint is present in local cache."""
-    return _get_hpsv2_cached_path() is not None
-
 
 class Hpsv2Predictor:
     """Predictor for Human Preference Score v2.1 text-image alignment.
@@ -115,8 +111,12 @@ class Hpsv2Predictor:
 
         import open_clip
 
-        cp_path = self.checkpoint_path or _get_hpsv2_cached_path()
-        is_cached = cp_path is not None and os.path.exists(cp_path)
+        if self.checkpoint_path is not None:
+            cp_path = self.checkpoint_path
+            is_cached = os.path.exists(cp_path)
+        else:
+            cp_path = _get_hpsv2_cached_path()
+            is_cached = cp_path is not None
 
         check_asset_and_permit_download(
             asset=HPSV2_ASSET,

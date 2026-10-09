@@ -62,25 +62,38 @@ IMAGE_REWARD_MEAN = 0.16717362830052426
 IMAGE_REWARD_STD = 1.0333394966054072
 
 
-def _is_bert_tokenizer_cached() -> bool:
-    """Return True if bert-base-uncased tokenizer files are cached."""
+def _get_bert_tokenizer_cached_path() -> str | None:
+    """Return the pinned tokenizer snapshot only when it is complete."""
     try:
         from huggingface_hub import try_to_load_from_cache
 
-        p = try_to_load_from_cache(
+        vocab_path = try_to_load_from_cache(
             "bert-base-uncased",
             "vocab.txt",
             revision=IMAGE_REWARD_TOKENIZER_ASSET.revision,
         )
-        if isinstance(p, str) and os.path.exists(p):
-            return True
-        p_fallback = try_to_load_from_cache(
-            "bert-base-uncased",
+        if not isinstance(vocab_path, str) or not os.path.exists(vocab_path):
+            return None
+        snapshot_path = os.path.dirname(vocab_path)
+        required_files = {
+            "config.json",
+            "tokenizer.json",
+            "tokenizer_config.json",
             "vocab.txt",
-        )
-        return isinstance(p_fallback, str) and os.path.exists(p_fallback)
+        }
+        if all(
+            os.path.exists(os.path.join(snapshot_path, name))
+            for name in required_files
+        ):
+            return snapshot_path
+        return None
     except Exception:
-        return False
+        return None
+
+
+def _is_bert_tokenizer_cached() -> bool:
+    """Return True if the complete pinned tokenizer snapshot is cached."""
+    return _get_bert_tokenizer_cached_path() is not None
 
 
 def _get_image_reward_cached_path() -> str | None:
@@ -119,11 +132,8 @@ def _get_image_reward_cached_path() -> str | None:
 
 
 def _is_image_reward_cached() -> bool:
-    """Return True if ImageReward checkpoint and tokenizer are cached."""
-    return (
-        _get_image_reward_cached_path() is not None
-        and _is_bert_tokenizer_cached()
-    )
+    """Return True if the ImageReward checkpoint is cached."""
+    return _get_image_reward_cached_path() is not None
 
 
 class _MLP(nn.Module):
@@ -286,7 +296,8 @@ class ImageRewardPredictor:
             disclosure_callback=self.download_callback,
         )
 
-        is_tok_cached = _is_bert_tokenizer_cached()
+        tokenizer_path = _get_bert_tokenizer_cached_path()
+        is_tok_cached = tokenizer_path is not None
         check_asset_and_permit_download(
             asset=IMAGE_REWARD_TOKENIZER_ASSET,
             is_cached=is_tok_cached,
@@ -301,6 +312,20 @@ class ImageRewardPredictor:
                 repo_id="THUDM/ImageReward",
                 filename="ImageReward.pt",
                 revision=IMAGE_REWARD_ASSET.revision,
+            )
+
+        if not is_tok_cached:
+            from huggingface_hub import snapshot_download
+
+            tokenizer_path = snapshot_download(
+                "bert-base-uncased",
+                revision=IMAGE_REWARD_TOKENIZER_ASSET.revision,
+                allow_patterns=[
+                    "config.json",
+                    "tokenizer.json",
+                    "tokenizer_config.json",
+                    "vocab.txt",
+                ],
             )
 
         model = _build_image_reward_model()
@@ -339,8 +364,7 @@ class ImageRewardPredictor:
         model = model.to(self.device)
         model.eval()
 
-        self._model = model
-        self._preprocess = Compose(
+        preprocess = Compose(
             [
                 Resize(224, interpolation=InterpolationMode.BICUBIC),
                 CenterCrop(224),
@@ -354,14 +378,15 @@ class ImageRewardPredictor:
         )
 
         tokenizer = BertTokenizer.from_pretrained(
-            "bert-base-uncased",
-            revision=IMAGE_REWARD_TOKENIZER_ASSET.revision,
-            local_files_only=not self.allow_download,
+            tokenizer_path,
+            local_files_only=True,
         )
         tokenizer.add_special_tokens({"bos_token": "[DEC]"})
         tokenizer.add_special_tokens({"additional_special_tokens": ["[ENC]"]})
         tokenizer.enc_token_id = tokenizer.convert_tokens_to_ids("[ENC]")
+        self._preprocess = preprocess
         self._tokenizer = tokenizer
+        self._model = model
 
     def _prepare_image(self, image: Any) -> torch.Tensor:
         """Normalize supported input image representations to model tensor."""

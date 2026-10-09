@@ -97,6 +97,67 @@ def test_pickscore_math_non_finite_raises_value_error():
         )
 
 
+def test_pickscore_extract_tensor_various_types():
+    from transformers.modeling_outputs import BaseModelOutputWithPooling
+
+    # 1. Bare tensor
+    t = torch.tensor([[1.0, 2.0]])
+    assert PickScorePredictor._extract_tensor(t) is t
+
+    # 2. Real Transformers BaseModelOutputWithPooling
+    pooler = torch.tensor([[1.0, 0.0]])
+    hidden = torch.ones(1, 3, 4)
+    out = BaseModelOutputWithPooling(
+        last_hidden_state=hidden, pooler_output=pooler
+    )
+    assert PickScorePredictor._extract_tensor(out) is pooler
+
+    # 3. Real Transformers to_tuple() (0 is 3D hidden, 1 is 2D pooler)
+    tup = out.to_tuple()
+    extracted = PickScorePredictor._extract_tensor(tup)
+    assert extracted is pooler
+    assert extracted.shape == (1, 2)
+    assert extracted.ndim == 2
+
+    # 4. Single-element tuple containing a 2D tensor
+    single_tup = (pooler,)
+    assert PickScorePredictor._extract_tensor(single_tup) is pooler
+
+    # 5. Unsupported tuple structure raises TypeError
+    with pytest.raises(TypeError, match="Unsupported tuple structure"):
+        PickScorePredictor._extract_tensor((hidden, "not a tensor"))
+
+    # 6. Unsupported arbitrary type raises TypeError
+    with pytest.raises(TypeError, match="Expected torch.Tensor"):
+        PickScorePredictor._extract_tensor("unsupported_string")
+
+
+def test_pickscore_compute_score_with_model_output_and_tuple():
+    from transformers.modeling_outputs import BaseModelOutputWithPooling
+
+    pooler = torch.tensor([[1.0, 0.0]])
+    hidden = torch.ones(1, 3, 4)
+    img_out = BaseModelOutputWithPooling(
+        last_hidden_state=hidden, pooler_output=pooler
+    )
+    txt_out = BaseModelOutputWithPooling(
+        last_hidden_state=hidden, pooler_output=pooler
+    )
+
+    # Direct ModelOutput
+    score = PickScorePredictor.compute_score_from_features(
+        img_out, txt_out, logit_scale=2.0
+    )
+    expected = float(torch.exp(torch.tensor(2.0)).item())
+    assert math.isclose(score, expected, rel_tol=1e-5)
+
+    # to_tuple() structure
+    tuple_score = PickScorePredictor.compute_score_from_features(
+        img_out.to_tuple(), txt_out.to_tuple(), logit_scale=2.0
+    )
+    assert math.isclose(tuple_score, expected, rel_tol=1e-5)
+
+
 # ---------------------------------------------------------------------------
 # File & Input Validation Tests
 # ---------------------------------------------------------------------------
@@ -209,6 +270,64 @@ def test_predictor_evaluate_single_image_mocked(sample_image):
     mock_model.get_image_features.return_value = torch.tensor([[1.0, 0.0]])
     mock_model.get_text_features.return_value = torch.tensor([[1.0, 0.0]])
     mock_model.logit_scale = torch.tensor(3.0)  # exp(3.0) ~= 20.0855
+
+    mock_processor = MagicMock()
+    mock_processor.return_value = {"input_ids": torch.tensor([[1, 2]])}
+
+    with patch.object(
+        pred, "_load_model", return_value=(mock_model, mock_processor)
+    ):
+        score = pred.evaluate(sample_image, "a red square")
+
+    expected = float(torch.exp(torch.tensor(3.0)).item())
+    assert math.isclose(score, expected, rel_tol=1e-5)
+
+
+def test_predictor_evaluate_single_image_with_base_model_output_with_pooling(
+    sample_image,
+):
+    from transformers.modeling_outputs import BaseModelOutputWithPooling
+
+    pred = PickScorePredictor(device="cpu")
+    pooler = torch.tensor([[1.0, 0.0]])
+    hidden = torch.ones(1, 3, 4)
+    out = BaseModelOutputWithPooling(
+        last_hidden_state=hidden, pooler_output=pooler
+    )
+
+    mock_model = MagicMock()
+    mock_model.get_image_features.return_value = out
+    mock_model.get_text_features.return_value = out
+    mock_model.logit_scale = torch.tensor(3.0)
+
+    mock_processor = MagicMock()
+    mock_processor.return_value = {"input_ids": torch.tensor([[1, 2]])}
+
+    with patch.object(
+        pred, "_load_model", return_value=(mock_model, mock_processor)
+    ):
+        score = pred.evaluate(sample_image, "a red square")
+
+    expected = float(torch.exp(torch.tensor(3.0)).item())
+    assert math.isclose(score, expected, rel_tol=1e-5)
+
+
+def test_predictor_evaluate_single_image_with_model_output_tuple(
+    sample_image,
+):
+    from transformers.modeling_outputs import BaseModelOutputWithPooling
+
+    pred = PickScorePredictor(device="cpu")
+    pooler = torch.tensor([[1.0, 0.0]])
+    hidden = torch.ones(1, 3, 4)
+    out = BaseModelOutputWithPooling(
+        last_hidden_state=hidden, pooler_output=pooler
+    )
+
+    mock_model = MagicMock()
+    mock_model.get_image_features.return_value = out.to_tuple()
+    mock_model.get_text_features.return_value = out.to_tuple()
+    mock_model.logit_scale = torch.tensor(3.0)
 
     mock_processor = MagicMock()
     mock_processor.return_value = {"input_ids": torch.tensor([[1, 2]])}

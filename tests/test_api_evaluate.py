@@ -1,9 +1,24 @@
+import importlib.machinery
+import importlib.util
+import sys
+import warnings
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 import torch
 from PIL import Image
+
+if (
+    "insightface" not in sys.modules
+    and importlib.util.find_spec("insightface") is None
+):
+    mock_insightface = MagicMock()
+    mock_insightface.__spec__ = importlib.machinery.ModuleSpec(
+        "insightface", None
+    )
+    sys.modules["insightface"] = mock_insightface
+    sys.modules["insightface.app"] = mock_insightface.app
 
 import image_evaluator
 from image_evaluator import (
@@ -14,8 +29,15 @@ from image_evaluator import (
 
 
 def test_top_level_package_exports_version():
+    import tomllib
+    from pathlib import Path
+
+    pyproject_file = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    with open(pyproject_file, "rb") as f:
+        expected_version = tomllib.load(f)["tool"]["poetry"]["version"]
+
     assert hasattr(image_evaluator, "__version__")
-    assert image_evaluator.__version__ == "0.6.1"
+    assert image_evaluator.__version__ == expected_version
     for name in [
         "evaluate",
         "SSIMPredictor",
@@ -202,6 +224,10 @@ def test_evaluate_pickscore_in_memory():
 
     with patch.object(PickScorePredictor, "_load_model") as mock_load:
         mock_model = MagicMock()
+        feat = torch.tensor([[1.0, 0.0]])
+        mock_model.get_image_features.return_value = feat
+        mock_model.get_text_features.return_value = feat
+        mock_model.logit_scale = torch.tensor(3.0)
         mock_processor = MagicMock()
 
         mock_processor.return_value = {"input_ids": torch.zeros(1, 5)}
@@ -732,3 +758,47 @@ def test_registry_capabilities_single_source_of_truth():
         "ssim",
         "psnr",
     }
+
+
+def test_to_pil_image_tensor_and_ndarray_behavior():
+    """Verify to_pil_image converts ndarray and Tensor without deprecation."""
+    from image_evaluator._input_adapters import to_pil_image
+
+    # 1. 3-channel uint8 numpy array (H, W, C)
+    arr_uint8 = np.zeros((16, 24, 3), dtype=np.uint8)
+    arr_uint8[0, 0] = [255, 128, 64]
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        img_from_arr = to_pil_image(arr_uint8)
+
+    assert isinstance(img_from_arr, Image.Image)
+    assert img_from_arr.mode == "RGB"
+    assert img_from_arr.size == (24, 16)  # (width, height)
+    assert img_from_arr.getpixel((0, 0)) == (255, 128, 64)
+
+    # 2. 3-channel float32 torch.Tensor (C, H, W) in [0.0, 1.0]
+    tensor_3d = torch.zeros(3, 16, 24, dtype=torch.float32)
+    tensor_3d[0, 0, 0] = 1.0
+    tensor_3d[1, 0, 0] = 0.5
+    tensor_3d[2, 0, 0] = 0.0
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        img_from_t3d = to_pil_image(tensor_3d)
+
+    assert isinstance(img_from_t3d, Image.Image)
+    assert img_from_t3d.mode == "RGB"
+    assert img_from_t3d.size == (24, 16)
+    r, g, b = img_from_t3d.getpixel((0, 0))
+    assert r == 255
+    assert g in (127, 128)
+    assert b == 0
+
+    # 3. 4-channel batch tensor (1, 3, H, W)
+    tensor_4d = torch.zeros(1, 3, 16, 24, dtype=torch.float32)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        img_from_t4d = to_pil_image(tensor_4d)
+
+    assert isinstance(img_from_t4d, Image.Image)
+    assert img_from_t4d.mode == "RGB"
+    assert img_from_t4d.size == (24, 16)

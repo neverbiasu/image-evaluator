@@ -1,9 +1,10 @@
 # image-evaluator
 
-`image-evaluator` is a lightweight CLI utility for generative AI practitioners and researchers. It evaluates fifteen core quality dimensions of synthetic images: predicted visual aesthetics, text-to-image semantic alignment, subject and pairwise visual semantic fidelity (CLIP-I), self-supervised structural similarity (DINOv2), image editing directional change (Directional CLIP), facial identity preservation, pairwise image fidelity (deep perceptual distance LPIPS, structural similarity SSIM, and peak signal-to-noise ratio PSNR), dataset distribution fidelity (Fréchet Inception Distance FID and Kernel Inception Distance KID), visual question answering alignment (VQAScore), and human preference alignment (PickScore, HPS v2.1, and ImageReward).
+[![PyPI Version](https://img.shields.io/pypi/v/image-evaluator.svg)](https://pypi.org/project/image-evaluator/)
+
+`image-evaluator` is a lightweight CLI utility for generative AI practitioners and researchers. It evaluates core quality dimensions of synthetic images: predicted visual aesthetics, text-to-image semantic alignment, subject and pairwise visual semantic fidelity (CLIP-I), self-supervised structural similarity (DINOv2), image editing directional change (Directional CLIP), facial identity preservation, pairwise image fidelity (deep perceptual distance LPIPS, structural similarity SSIM, and peak signal-to-noise ratio PSNR), dataset distribution fidelity (Fréchet Inception Distance FID and Kernel Inception Distance KID), visual question answering alignment (VQAScore), and human preference alignment (PickScore, HPS v2.1, and ImageReward).
 
 ## Evaluation Workflow
-
 ```mermaid
 flowchart LR
     A[Task Goal] --> B{Choose --metrics}
@@ -41,25 +42,27 @@ flowchart LR
 
 ## Metric Selection
 
-The toolkit registers 15 core metrics backed by an immutable `MetricRegistry`. Each metric provides formal input contracts, task and objective discovery tags, and execution protocols:
+The toolkit registers core metrics backed by an immutable `MetricRegistry`. Each metric provides formal input contracts, task and objective discovery tags, and execution protocols:
 
+<!-- BEGIN METRICS_TABLE -->
 | Metric ID | Display Name | Tasks | Objectives | Required Inputs | Direction | Technical Details |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | `aesthetic` | LAION Aesthetic Score | `text_to_image`, `image_editing` | `aesthetic_quality` | `image` | Higher is better | [docs/aesthetic-score.md](docs/aesthetic-score.md) |
+| `arcface` | ArcFace Distance | `face_generation`, `face_editing` | `identity_preservation` | `image`, `reference_image` | Lower is better | [docs/arcface-distance.md](docs/arcface-distance.md) |
 | `clip` | CLIP Score | `text_to_image`, `image_editing` | `text_image_alignment` | `image`, `prompt` | Higher is better | [docs/clip.md](docs/clip.md) |
 | `clip_i` | CLIP Image-Image Similarity | `image_editing`, `subject_driven_generation` | `fidelity`, `identity_preservation` | `image`, `reference_image` | Higher is better | [docs/clip-i.md](docs/clip-i.md) |
 | `dino_similarity` | DINOv2 Image-Image Similarity | `image_editing`, `subject_driven_generation` | `fidelity`, `structural_similarity` | `image`, `reference_image` | Higher is better | [docs/dino-similarity.md](docs/dino-similarity.md) |
 | `directional_clip` | Directional CLIP | `image_editing` | `edit_direction_alignment` | `image`, `reference_image`, `prompt`, `source_prompt` | Higher is better | [docs/directional-clip.md](docs/directional-clip.md) |
-| `arcface` | ArcFace Distance | `face_generation`, `face_editing` | `identity_preservation` | `image`, `reference_image` | Lower is better | [docs/arcface-distance.md](docs/arcface-distance.md) |
-| `lpips` | Learned Perceptual Patch Similarity | `image_editing`, `image_reconstruction`, `super_resolution` | `perceptual_similarity` | `image`, `reference_image` | Lower is better | [docs/pairwise-fidelity.md](docs/pairwise-fidelity.md) |
-| `ssim` | Structural Similarity Index Measure | `image_editing`, `image_reconstruction`, `super_resolution` | `structural_similarity` | `image`, `reference_image` | Higher is better | [docs/pairwise-fidelity.md](docs/pairwise-fidelity.md) |
-| `psnr` | Peak Signal-to-Noise Ratio | `image_editing`, `image_reconstruction`, `super_resolution` | `pixel_fidelity` | `image`, `reference_image` | Higher is better | [docs/pairwise-fidelity.md](docs/pairwise-fidelity.md) |
-| `fid` | Fréchet Inception Distance | `text_to_image`, `unconditional_generation` | `distribution_similarity` | `image_collection`, `reference_collection` | Lower is better | [docs/fid.md](docs/fid.md) |
-| `kid` | Kernel Inception Distance | `text_to_image`, `unconditional_generation` | `distribution_similarity` | `image_collection`, `reference_collection` | Lower is better | [docs/kid.md](docs/kid.md) |
-| `pickscore` | PickScore | `text_to_image` | `human_preference` | `image`, `prompt` | Higher is better | [docs/pickscore.md](docs/pickscore.md) |
+| `fid` | Fréchet Inception Distance | `text_to_image` | `distribution_similarity` | `image_collection`, `reference_collection` | Lower is better | [docs/fid.md](docs/fid.md) |
 | `hpsv2` | HPS v2.1 | `text_to_image`, `subject_driven_generation` | `human_preference` | `image`, `prompt` | Higher is better | [docs/hpsv2.md](docs/hpsv2.md) |
 | `image_reward` | ImageReward | `text_to_image`, `subject_driven_generation` | `human_preference` | `image`, `prompt` | Higher is better | [docs/image-reward.md](docs/image-reward.md) |
+| `kid` | Kernel Inception Distance | `text_to_image` | `distribution_similarity` | `image_collection`, `reference_collection` | Lower is better | [docs/kid.md](docs/kid.md) |
+| `lpips` | Learned Perceptual Image Patch Similarity | `image_editing`, `image_reconstruction`, `super_resolution` | `perceptual_similarity` | `image`, `reference_image` | Lower is better | [docs/pairwise-fidelity.md](docs/pairwise-fidelity.md) |
+| `pickscore` | PickScore | `text_to_image`, `image_editing` | `human_preference` | `image`, `prompt` | Higher is better | [docs/pickscore.md](docs/pickscore.md) |
+| `psnr` | Peak Signal-to-Noise Ratio | `image_editing`, `image_reconstruction`, `super_resolution` | `pixel_fidelity` | `image`, `reference_image` | Higher is better | [docs/pairwise-fidelity.md](docs/pairwise-fidelity.md) |
+| `ssim` | Structural Similarity Index Measure | `image_editing`, `image_reconstruction`, `super_resolution` | `structural_similarity` | `image`, `reference_image` | Higher is better | [docs/pairwise-fidelity.md](docs/pairwise-fidelity.md) |
 | `vqascore` | VQAScore | `text_to_image`, `subject_driven_generation` | `alignment`, `compositionality` | `image`, `prompt` | Higher is better | [docs/vqascore.md](docs/vqascore.md) |
+<!-- END METRICS_TABLE -->
 
 ## Quick Start
 
@@ -68,12 +71,19 @@ The toolkit registers 15 core metrics backed by an immutable `MetricRegistry`. E
 `image-evaluator` requires Python 3.11–3.14. Install the release via pip:
 
 ```bash
-python -m pip install image-evaluator==0.4.0
+python -m pip install image-evaluator
 ```
 
 The supported runtime path is macOS or Linux with CPU ONNX Runtime. Linux
 users who want the GPU runtime can replace `onnxruntime` with
 `onnxruntime-gpu` after installation. Windows is currently unverified.
+
+#### Known Limitations
+
+- Windows has an external Python 3.12 smoke test covering CLIP, LPIPS, SSIM,
+  and PSNR; complete Windows support remains unverified.
+- The default CLIP and PickScore models are trained primarily on English text
+  prompts; multilingual prompt quality has not been independently benchmarked.
 
 #### Optional Modern Dependency Groups
 
@@ -120,9 +130,11 @@ python -m pip install 'image-evaluator[modern]'
 ### Tutorial
 
 The CLI enforces explicit metric selection via `--metrics` and initializes only selected models:
-- `--metrics` (required): One or more of `aesthetic`, `clip`, `clip_i`, `dino_similarity`, `directional_clip`, `arcface`, `lpips`, `ssim`, `psnr`, `fid`, `kid`, `pickscore`, `hpsv2`.
+<!-- BEGIN TUTORIAL_METRICS -->
+- `--metrics` (required): One or more of `aesthetic` `arcface` `clip` `clip_i` `dino_similarity` `directional_clip` `fid` `hpsv2` `image_reward` `kid` `lpips` `pickscore` `psnr` `ssim` `vqascore`.
 - `--image` (required): Path to an image file or directory (must be a directory when `fid` or `kid` is selected).
-- `--prompt`: Required when `clip`, `pickscore`, `hpsv2`, or `directional_clip` is selected; prohibited otherwise.
+- `--prompt`: Required when `clip` `directional_clip` `hpsv2` `image_reward` `pickscore` `vqascore` is selected; prohibited otherwise.
+<!-- END TUTORIAL_METRICS -->
 - `--prompt-src`: Required when `directional_clip` is selected; describes the source image before editing.
 - `--reference`: Required when reference-based metrics (`directional_clip`, `clip_i`, `dino_similarity`, `arcface`, `lpips`, `ssim`, `psnr`, `fid`, `kid`) are selected; prohibited otherwise (must be a directory when `fid` or `kid` is selected).
 - `--allow-download`: Opt-in flag to authorize automatic downloading of model weights from external sources if not locally cached (default: False). When omitted, evaluating an uncached model fails fast with a `DownloadNotAllowedError` to prevent unexpected network transfers and disk consumption.

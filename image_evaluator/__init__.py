@@ -3,9 +3,36 @@ image generation evaluation toolkit.
 """
 
 import importlib
+import importlib.metadata
+from pathlib import Path
 from typing import Any
 
-__version__ = "0.6.1"
+
+def _resolve_version() -> str:
+    # 1. When running from a source checkout, pyproject.toml is adjacent
+    # to the package. Prioritize it so in-tree development always reflects
+    # the local source version.
+    pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    if pyproject.is_file():
+        import tomllib
+
+        with open(pyproject, "rb") as f:
+            data = tomllib.load(f)
+        try:
+            return str(data["tool"]["poetry"]["version"])
+        except KeyError as exc:
+            raise KeyError(
+                f"Missing ['tool']['poetry']['version'] in {pyproject}"
+            ) from exc
+
+    # 2. Installed wheel/distribution without adjacent pyproject.toml
+    try:
+        return importlib.metadata.version("image-evaluator")
+    except importlib.metadata.PackageNotFoundError:
+        return "0.0.0.dev0"
+
+
+__version__ = _resolve_version()
 
 _EXPORTS = {
     "evaluate": ("image_evaluator.core", "evaluate"),
@@ -60,6 +87,14 @@ _EXPORTS = {
     "DownloadNotAllowedError": (
         "image_evaluator.model_assets",
         "DownloadNotAllowedError",
+    ),
+    "PICKSCORE_MODEL_ASSET": (
+        "image_evaluator.pickscore_predictor",
+        "PICKSCORE_MODEL_ASSET",
+    ),
+    "PICKSCORE_PROCESSOR_ASSET": (
+        "image_evaluator.pickscore_predictor",
+        "PICKSCORE_PROCESSOR_ASSET",
     ),
 }
 

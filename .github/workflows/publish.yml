@@ -23,20 +23,7 @@ jobs:
           python -m pytest -q
           python -m ruff check .
       - name: Verify tag matches package version
-        run: |
-          python - <<'PY'
-          import os
-          import tomllib
-          from packaging.version import Version
-
-          with open("pyproject.toml", "rb") as handle:
-              package_version = tomllib.load(handle)["tool"]["poetry"]["version"]
-          tag_version = os.environ["GITHUB_REF_NAME"].removeprefix("v")
-          if Version(tag_version) != Version(package_version):
-              raise SystemExit(
-                  f"tag {tag_version!r} does not match package {package_version!r}"
-              )
-          PY
+        run: python scripts/verify_tag_version.py --env GITHUB_REF_NAME
       - name: Build distributions
         run: python -m build
       - name: Check distribution metadata

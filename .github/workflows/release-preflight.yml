@@ -33,6 +33,8 @@ jobs:
               expected = tomllib.load(f)["tool"]["poetry"]["version"]
           assert version("image-evaluator") == expected
           PY
+      - name: Verify README is synchronized with MetricRegistry
+        run: python scripts/sync_readme_registry.py --check
       - name: Run tests and lint
         run: |
           python -m pytest -q

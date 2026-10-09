@@ -1,10 +1,11 @@
 """Tests for VQAScore predictor and evaluation pipeline integration."""
 
 import json
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -20,6 +21,7 @@ from image_evaluator.vqascore_predictor import (
     VQA_SCORE_TEXT_ASSET,
     VQA_SCORE_VISION_ASSET,
     VQAScorePredictor,
+    _snapshot_is_complete,
 )
 
 
@@ -374,3 +376,172 @@ def test_download_gating_discloses_both_assets() -> None:
     assert vis_asset.model_id == "openai/clip-vit-large-patch14-336"
     assert "1.7 GB" in vis_msg or "1715593675" in vis_msg
 
+
+def test_snapshot_completeness_rejects_weights_only(tmp_path) -> None:
+    """A weights-only cache cannot bypass asset disclosure and repair."""
+    (tmp_path / "pytorch_model.bin").touch()
+    assert not _snapshot_is_complete(
+        str(tmp_path),
+        {"config.json", "spiece.model", "tokenizer_config.json"},
+    )
+
+
+def test_cache_lookup_rejects_unpinned_fallback(tmp_path) -> None:
+    """Cache lookup must only accept the disclosed pinned revisions."""
+    from image_evaluator.vqascore_predictor import _get_vqascore_cached_paths
+
+    weight = tmp_path / "pytorch_model.bin"
+    weight.touch()
+
+    def cache_lookup(model_id, filename, revision=None):
+        if revision is None and filename == "pytorch_model.bin":
+            return str(weight)
+        return None
+
+    with patch(
+        "huggingface_hub.try_to_load_from_cache",
+        side_effect=cache_lookup,
+    ):
+        assert _get_vqascore_cached_paths() == (None, None)
+
+
+def test_failed_vision_load_does_not_poison_retry(sample_image: str) -> None:
+    """A failed vision initialization must leave the predictor retryable."""
+    predictor = VQAScorePredictor(allow_download=False)
+    fake_model = MagicMock()
+    fake_model.vision_tower.load_model.side_effect = RuntimeError(
+        "vision load failed"
+    )
+    config = MagicMock()
+
+    with patch(
+        "image_evaluator.vqascore_predictor._get_vqascore_cached_paths",
+        return_value=("/fake/text", "/fake/vision"),
+    ), patch("os.path.exists", return_value=True), patch(
+        "transformers.AutoTokenizer.from_pretrained"
+    ), patch(
+        "image_evaluator.vqascore_predictor._get_clip_t5_classes",
+        return_value=(
+            MagicMock(from_pretrained=MagicMock(return_value=config)),
+            MagicMock(from_pretrained=MagicMock(return_value=fake_model)),
+        ),
+    ):
+        with pytest.raises(RuntimeError, match="vision load failed"):
+            predictor._ensure_loaded()
+
+    assert predictor._model is None
+    assert predictor._tokenizer is None
+    assert predictor._image_processor is None
+
+
+def test_prepare_image_ndarray_and_tensor_behavior() -> None:
+    """Verify _prepare_image converts HWC ndarray, CHW ndarray, and Tensor
+    to RGB without DeprecationWarning and with correct pixel mappings.
+    """
+    predictor = VQAScorePredictor(allow_download=True)
+    _mock_vqascore_predictor_loaded(predictor)
+
+    with patch(
+        "image_evaluator.vqascore_predictor.expand2square",
+        wraps=image_evaluator.vqascore_predictor.expand2square,
+    ) as mock_expand:
+        # 1. HWC ndarray (uint8 [0, 255] and float32 [0.0, 1.0])
+        arr_hwc_uint8 = np.zeros((16, 24, 3), dtype=np.uint8)
+        arr_hwc_uint8[0, 0] = [255, 128, 64]
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            predictor._prepare_image(arr_hwc_uint8)
+        img_hwc_u8 = mock_expand.call_args[0][0]
+        assert isinstance(img_hwc_u8, Image.Image)
+        assert img_hwc_u8.mode == "RGB"
+        assert img_hwc_u8.size == (24, 16)
+        assert img_hwc_u8.getpixel((0, 0)) == (255, 128, 64)
+
+        arr_hwc_float = np.zeros((16, 24, 3), dtype=np.float32)
+        arr_hwc_float[0, 0] = [1.0, 0.5, 0.0]
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            predictor._prepare_image(arr_hwc_float)
+        img_hwc_fl = mock_expand.call_args[0][0]
+        assert isinstance(img_hwc_fl, Image.Image)
+        assert img_hwc_fl.mode == "RGB"
+        assert img_hwc_fl.size == (24, 16)
+        r, g, b = img_hwc_fl.getpixel((0, 0))
+        assert r == 255
+        assert g in (127, 128)
+        assert b == 0
+
+        # 2. CHW ndarray (3, H, W)
+        arr_chw_float = np.zeros((3, 16, 24), dtype=np.float32)
+        arr_chw_float[0, 0, 0] = 1.0
+        arr_chw_float[1, 0, 0] = 0.5
+        arr_chw_float[2, 0, 0] = 0.0
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            predictor._prepare_image(arr_chw_float)
+        img_chw = mock_expand.call_args[0][0]
+        assert isinstance(img_chw, Image.Image)
+        assert img_chw.mode == "RGB"
+        assert img_chw.size == (24, 16)
+        r, g, b = img_chw.getpixel((0, 0))
+        assert r == 255
+        assert g in (127, 128)
+        assert b == 0
+
+        arr_chw_uint8 = np.zeros((3, 16, 24), dtype=np.uint8)
+        arr_chw_uint8[0, 0, 0] = 255
+        arr_chw_uint8[1, 0, 0] = 128
+        arr_chw_uint8[2, 0, 0] = 64
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            predictor._prepare_image(arr_chw_uint8)
+        img_chw_u8 = mock_expand.call_args[0][0]
+        assert isinstance(img_chw_u8, Image.Image)
+        assert img_chw_u8.mode == "RGB"
+        assert img_chw_u8.size == (24, 16)
+        assert img_chw_u8.getpixel((0, 0)) == (255, 128, 64)
+
+        # 3. 3D torch.Tensor (3, H, W) and (1, H, W)
+        tensor_3d = torch.zeros(3, 16, 24, dtype=torch.float32)
+        tensor_3d[0, 0, 0] = 1.0
+        tensor_3d[1, 0, 0] = 0.5
+        tensor_3d[2, 0, 0] = 0.0
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            predictor._prepare_image(tensor_3d)
+        img_t3d = mock_expand.call_args[0][0]
+        assert isinstance(img_t3d, Image.Image)
+        assert img_t3d.mode == "RGB"
+        assert img_t3d.size == (24, 16)
+        r, g, b = img_t3d.getpixel((0, 0))
+        assert r == 255
+        assert g in (127, 128)
+        assert b == 0
+
+        tensor_1ch = torch.zeros(1, 16, 24, dtype=torch.float32)
+        tensor_1ch[0, 0, 0] = 1.0
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            predictor._prepare_image(tensor_1ch)
+        img_t1ch = mock_expand.call_args[0][0]
+        assert isinstance(img_t1ch, Image.Image)
+        assert img_t1ch.mode == "RGB"
+        assert img_t1ch.size == (24, 16)
+        assert img_t1ch.getpixel((0, 0)) == (255, 255, 255)
+
+        # 4. 4D batch torch.Tensor (1, 3, H, W)
+        tensor_4d = torch.zeros(1, 3, 16, 24, dtype=torch.float32)
+        tensor_4d[0, 0, 0, 0] = 1.0
+        tensor_4d[0, 1, 0, 0] = 0.5
+        tensor_4d[0, 2, 0, 0] = 0.0
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            predictor._prepare_image(tensor_4d)
+        img_t4d = mock_expand.call_args[0][0]
+        assert isinstance(img_t4d, Image.Image)
+        assert img_t4d.mode == "RGB"
+        assert img_t4d.size == (24, 16)
+        r, g, b = img_t4d.getpixel((0, 0))
+        assert r == 255
+        assert g in (127, 128)
+        assert b == 0

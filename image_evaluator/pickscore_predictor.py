@@ -1,10 +1,16 @@
 import os
+import re
 from collections.abc import Sequence
 from typing import Any
 
 import numpy as np
 import torch
 from PIL import Image
+
+from image_evaluator.model_assets import (
+    ModelAsset,
+    check_asset_and_permit_download,
+)
 
 PICKSCORE_SUPPORTED_EXTENSIONS = {
     "bmp",
@@ -77,6 +83,154 @@ def _discover_and_validate_images(folder: str) -> list[str]:
     return image_paths
 
 
+PICKSCORE_MODEL_ASSET = ModelAsset(
+    metric_id="pickscore",
+    model_id="yuvalkirstain/PickScore_v1",
+    source="huggingface",
+    revision="a4e4367c6dfa7288a00c550414478f865b875800",
+    estimated_download_bytes=3944552236,
+    install_extra=None,
+)
+
+PICKSCORE_PROCESSOR_ASSET = ModelAsset(
+    metric_id="pickscore",
+    model_id="laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
+    source="huggingface",
+    revision="1c2b8495b28150b8a4922ee1c8edee224c284c0c",
+    estimated_download_bytes=3616854,
+    install_extra=None,
+)
+
+PICKSCORE_MODEL_REQUIRED_FILES = (
+    "config.json",
+    "model.safetensors",
+)
+
+PICKSCORE_PROCESSOR_REQUIRED_FILES = (
+    "preprocessor_config.json",
+    "tokenizer_config.json",
+    "vocab.json",
+    "merges.txt",
+    "special_tokens_map.json",
+    "tokenizer.json",
+)
+
+
+def _is_hf_asset_cached(
+    model_id: str,
+    required_files: tuple[str, ...],
+    revision: str | None = None,
+) -> bool:
+    """Check if all required files for an asset exist in local HF cache."""
+    try:
+        from huggingface_hub import try_to_load_from_cache
+
+        for filename in required_files:
+            cached_path = try_to_load_from_cache(
+                model_id, filename, revision=revision
+            )
+            if not (
+                isinstance(cached_path, str) and os.path.exists(cached_path)
+            ):
+                return False
+        return True
+    except Exception:
+        return False
+
+
+def _is_pickscore_cached() -> bool:
+    """Check if both PickScore model and processor are cached locally."""
+    return _is_hf_asset_cached(
+        PICKSCORE_MODEL_ASSET.model_id,
+        PICKSCORE_MODEL_REQUIRED_FILES,
+        revision=PICKSCORE_MODEL_ASSET.revision,
+    ) and _is_hf_asset_cached(
+        PICKSCORE_PROCESSOR_ASSET.model_id,
+        PICKSCORE_PROCESSOR_REQUIRED_FILES,
+        revision=PICKSCORE_PROCESSOR_ASSET.revision,
+    )
+
+
+_HEX_40_PATTERN = re.compile(r"^[0-9a-fA-F]{40}$")
+
+
+def _validate_revision(revision: Any, asset_type: str, name: str) -> str:
+    """Strictly validate revision is a 40-character hexadecimal commit hash.
+
+    Must reject:
+    - Non-string types
+    - Length != 40
+    - Non-hex characters
+    - Leading/trailing whitespace
+    - Appended newlines (e.g. \\n)
+    - Branch names, tags, 'main', 'latest'
+    No silent stripping allowed.
+    """
+    if not isinstance(revision, str) or not re.fullmatch(
+        r"[0-9a-fA-F]{40}", revision
+    ):
+        raise ValueError(
+            f"Custom PickScore {asset_type} '{name}' is a remote repository "
+            f"identifier but does not provide a verified 40-character "
+            f"hexadecimal commit hash revision (got: {revision!r}). Pinned "
+            f"revisions are strictly required for reproducibility."
+        )
+    return revision
+
+
+def _validate_custom_remote_metadata(
+    name: str,
+    asset_type: str,
+    revision: Any,
+    download_bytes: Any,
+    required_files: Any,
+) -> tuple[str, int, tuple[str, ...]]:
+    """Strictly validate custom remote asset contract.
+
+    Custom remote asset must provide:
+    - 40-character hexadecimal commit hash revision
+    - Positive integer download bytes (> 0, not bool)
+    - Non-empty sequence of non-empty string filenames
+
+    Raises ValueError before any cache check or from_pretrained call.
+    """
+    valid_rev = _validate_revision(revision, asset_type, name)
+
+    if (
+        isinstance(download_bytes, bool)
+        or not isinstance(download_bytes, int)
+        or download_bytes <= 0
+    ):
+        raise ValueError(
+            f"Custom PickScore {asset_type} '{name}' requires a positive "
+            f"integer download size in bytes (got: {download_bytes!r})."
+        )
+
+    if not isinstance(required_files, (list, tuple, set)):
+        raise ValueError(
+            f"Custom PickScore {asset_type} '{name}' requires a non-empty "
+            f"sequence of required filenames "
+            f"(got: {type(required_files).__name__})."
+        )
+
+    files_tuple = tuple(required_files)
+    if not files_tuple:
+        raise ValueError(
+            f"Custom PickScore {asset_type} '{name}' requires a non-empty "
+            f"sequence of required filenames (got empty sequence)."
+        )
+
+    for item in files_tuple:
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError(
+                f"Custom PickScore {asset_type} '{name}' contains an invalid "
+                f"required filename: {item!r}. All filenames must be "
+                f"non-empty strings."
+            )
+
+    return valid_rev, download_bytes, files_tuple
+
+
 class PickScoreResult(dict[str, Any]):
     """Container for PickScore evaluation result and protocol metadata."""
 
@@ -122,16 +276,24 @@ class PickScoreResult(dict[str, Any]):
 class PickScorePredictor:
     """Evaluates human preference score for text-to-image synthesis."""
 
-    MODEL_NAME: str = "yuvalkirstain/PickScore_v1"
-    PROCESSOR_NAME: str = "laion/CLIP-ViT-H-14-laion2B-s32B-b79K"
+    MODEL_NAME: str = PICKSCORE_MODEL_ASSET.model_id
+    PROCESSOR_NAME: str = PICKSCORE_PROCESSOR_ASSET.model_id
 
     def __init__(
         self,
         device: str | torch.device | None = None,
         model_name: str | None = None,
         processor_name: str | None = None,
+        allow_download: bool = False,
+        download_callback: Any = None,
+        model_revision: str | None = None,
+        processor_revision: str | None = None,
+        model_download_bytes: int | None = None,
+        processor_download_bytes: int | None = None,
+        model_required_files: tuple[str, ...] | None = None,
+        processor_required_files: tuple[str, ...] | None = None,
     ) -> None:
-        """Initialize PickScorePredictor with deferred model loading.
+        """Initialize PickScorePredictor with deferred loading and gating.
 
         Args:
             device: Target torch device ('cpu', 'cuda', 'mps', or
@@ -139,6 +301,19 @@ class PickScorePredictor:
             model_name: Custom model name or path. Defaults to MODEL_NAME.
             processor_name: Custom processor name or path.
                 Defaults to PROCESSOR_NAME.
+            allow_download: Whether download of uncached weights is permitted.
+            download_callback: Optional callable(asset, msg) upon download.
+            model_revision: Optional 40-char hex commit hash for custom model.
+            processor_revision: Optional 40-char hex commit hash for custom
+                processor.
+            model_download_bytes: Optional estimated bytes for custom model
+                disclosure.
+            processor_download_bytes: Optional estimated bytes for custom
+                processor disclosure.
+            model_required_files: Optional tuple of required filenames for
+                custom model cache check.
+            processor_required_files: Optional tuple of required filenames for
+                custom processor cache check.
         """
         if device is None:
             if torch.cuda.is_available():
@@ -155,41 +330,220 @@ class PickScorePredictor:
 
         self.model_name: str = model_name or self.MODEL_NAME
         self.processor_name: str = processor_name or self.PROCESSOR_NAME
+        self.allow_download: bool = allow_download
+        self.download_callback: Any = download_callback
+
+        self.is_custom_model = self.model_name != self.MODEL_NAME
+        self.is_custom_processor = self.processor_name != self.PROCESSOR_NAME
+
+        self.is_local_model = os.path.exists(self.model_name)
+        if self.is_local_model:
+            self.model_revision = None
+            self.model_download_bytes = None
+            self.model_required_files = ()
+        elif not self.is_custom_model:
+            self.model_revision = PICKSCORE_MODEL_ASSET.revision
+            self.model_download_bytes = (
+                PICKSCORE_MODEL_ASSET.estimated_download_bytes
+            )
+            self.model_required_files = PICKSCORE_MODEL_REQUIRED_FILES
+        else:
+            (
+                self.model_revision,
+                self.model_download_bytes,
+                self.model_required_files,
+            ) = _validate_custom_remote_metadata(
+                self.model_name,
+                "model",
+                model_revision,
+                model_download_bytes,
+                model_required_files,
+            )
+
+        self.is_local_processor = os.path.exists(self.processor_name)
+        if self.is_local_processor:
+            self.processor_revision = None
+            self.processor_download_bytes = None
+            self.processor_required_files = ()
+        elif not self.is_custom_processor:
+            self.processor_revision = PICKSCORE_PROCESSOR_ASSET.revision
+            self.processor_download_bytes = (
+                PICKSCORE_PROCESSOR_ASSET.estimated_download_bytes
+            )
+            self.processor_required_files = PICKSCORE_PROCESSOR_REQUIRED_FILES
+        else:
+            (
+                self.processor_revision,
+                self.processor_download_bytes,
+                self.processor_required_files,
+            ) = _validate_custom_remote_metadata(
+                self.processor_name,
+                "processor",
+                processor_revision,
+                processor_download_bytes,
+                processor_required_files,
+            )
+
         self._model = None
         self._processor = None
 
     def _load_model(self) -> tuple[Any, Any]:
         """Load PickScore AutoModel and AutoProcessor on demand.
 
+        Validates cache availability and respects download authorization
+        before calling transformers.
+
         Returns:
             Tuple of (model, processor).
 
         Raises:
             ImportError: If transformers is not installed.
+            DownloadNotAllowedError: If assets are not cached and
+                allow_download is False.
         """
-        if self._model is None or self._processor is None:
-            try:
-                from transformers import AutoModel, AutoProcessor
-            except ImportError as e:
-                raise ImportError(
-                    "transformers is required to use PickScore. "
-                    "Please install transformers."
-                ) from e
+        if self._model is not None and self._processor is not None:
+            return self._model, self._processor
 
-            self._processor = AutoProcessor.from_pretrained(
-                self.processor_name
+        try:
+            from transformers import AutoModel, AutoProcessor
+        except ImportError as e:
+            raise ImportError(
+                "transformers is required to use PickScore. "
+                "Please install transformers."
+            ) from e
+
+        disclosed_tracker: set[str] = set()
+
+        # 1. Gating & Disclosure for Processor
+        if not self.is_local_processor:
+            if not self.is_custom_processor:
+                proc_cached = _is_hf_asset_cached(
+                    self.processor_name,
+                    PICKSCORE_PROCESSOR_REQUIRED_FILES,
+                    revision=self.processor_revision,
+                )
+                proc_asset = PICKSCORE_PROCESSOR_ASSET
+            else:
+                proc_cached = _is_hf_asset_cached(
+                    self.processor_name,
+                    self.processor_required_files,
+                    revision=self.processor_revision,
+                )
+                proc_asset = ModelAsset(
+                    metric_id="pickscore",
+                    model_id=self.processor_name,
+                    source="huggingface",
+                    revision=self.processor_revision,
+                    estimated_download_bytes=self.processor_download_bytes,
+                )
+
+            check_asset_and_permit_download(
+                asset=proc_asset,
+                is_cached=proc_cached,
+                allow_download=self.allow_download,
+                disclosure_callback=self.download_callback,
+                disclosed_tracker=disclosed_tracker,
             )
-            self._model = (
-                AutoModel.from_pretrained(self.model_name)
+
+        # 2. Gating & Disclosure for Model
+        if not self.is_local_model:
+            if not self.is_custom_model:
+                model_cached = _is_hf_asset_cached(
+                    self.model_name,
+                    PICKSCORE_MODEL_REQUIRED_FILES,
+                    revision=self.model_revision,
+                )
+                model_asset = PICKSCORE_MODEL_ASSET
+            else:
+                model_cached = _is_hf_asset_cached(
+                    self.model_name,
+                    self.model_required_files,
+                    revision=self.model_revision,
+                )
+                model_asset = ModelAsset(
+                    metric_id="pickscore",
+                    model_id=self.model_name,
+                    source="huggingface",
+                    revision=self.model_revision,
+                    estimated_download_bytes=self.model_download_bytes,
+                )
+
+            check_asset_and_permit_download(
+                asset=model_asset,
+                is_cached=model_cached,
+                allow_download=self.allow_download,
+                disclosure_callback=self.download_callback,
+                disclosed_tracker=disclosed_tracker,
+            )
+
+        # 3. Instantiate Processor and Model safely
+        proc_kwargs: dict[str, Any] = {}
+        if not self.is_local_processor:
+            proc_kwargs["revision"] = self.processor_revision
+            proc_kwargs["local_files_only"] = not self.allow_download
+
+        model_kwargs: dict[str, Any] = {}
+        if not self.is_local_model:
+            model_kwargs["revision"] = self.model_revision
+            model_kwargs["local_files_only"] = not self.allow_download
+
+        loaded_proc = None
+        loaded_model = None
+        try:
+            loaded_proc = AutoProcessor.from_pretrained(
+                self.processor_name, **proc_kwargs
+            )
+            loaded_model = (
+                AutoModel.from_pretrained(self.model_name, **model_kwargs)
                 .eval()
                 .to(self.device)
             )
-        return self._model, self._processor
+            self._processor = loaded_proc
+            self._model = loaded_model
+            return self._model, self._processor
+        except Exception:
+            self._processor = None
+            self._model = None
+            raise
+
+    @staticmethod
+    def _extract_tensor(features: Any) -> torch.Tensor:
+        """Extract embedding tensor from tensor, ModelOutput, or tuple."""
+        if isinstance(features, torch.Tensor):
+            return features
+        pooler = getattr(features, "pooler_output", None)
+        if isinstance(pooler, torch.Tensor):
+            return pooler
+        if isinstance(features, (tuple, list)):
+            # Real Transformers BaseModelOutputWithPooling.to_tuple() layout:
+            # index 0: last_hidden_state (3D: batch, seq_len, dim)
+            # index 1: pooler_output (2D: batch, dim)
+            if (
+                len(features) >= 2
+                and isinstance(features[1], torch.Tensor)
+                and features[1].ndim in (1, 2)
+            ):
+                return features[1]
+            if (
+                len(features) == 1
+                and isinstance(features[0], torch.Tensor)
+                and features[0].ndim in (1, 2)
+            ):
+                return features[0]
+            raise TypeError(
+                f"Unsupported tuple structure for PickScore features: "
+                f"expected pooler tensor at index 1 or single-element tuple, "
+                f"got length {len(features)}"
+            )
+        raise TypeError(
+            f"Expected torch.Tensor, ModelOutput with pooler_output, or "
+            f"Transformers output tuple, got {type(features).__name__}"
+        )
 
     @staticmethod
     def compute_score_from_features(
-        image_features: torch.Tensor,
-        text_features: torch.Tensor,
+        image_features: Any,
+        text_features: Any,
         logit_scale: torch.Tensor | float,
     ) -> float:
         """Compute PickScore scalar from image and text feature embeddings.
@@ -198,8 +552,8 @@ class PickScorePredictor:
             score = exp(logit_scale) * (text_norm @ image_norm.T)
 
         Args:
-            image_features: Tensor of shape (1, D) or (D,).
-            text_features: Tensor of shape (1, D) or (D,).
+            image_features: Tensor or ModelOutput of shape (1, D) or (D,).
+            text_features: Tensor or ModelOutput of shape (1, D) or (D,).
             logit_scale: Model logit scale parameter (tensor or float).
 
         Returns:
@@ -208,11 +562,30 @@ class PickScorePredictor:
         Raises:
             ValueError: If inputs have dimension mismatch or output is
                 non-finite.
+            TypeError: If input features cannot be resolved to 1D/2D tensors.
         """
+        image_features = PickScorePredictor._extract_tensor(image_features)
+        text_features = PickScorePredictor._extract_tensor(text_features)
+
+        if not isinstance(image_features, torch.Tensor) or not isinstance(
+            text_features, torch.Tensor
+        ):
+            raise TypeError(
+                f"Expected torch.Tensor or ModelOutput with pooler_output, "
+                f"got image: {type(image_features).__name__}, "
+                f"text: {type(text_features).__name__}"
+            )
+
         if image_features.ndim == 1:
             image_features = image_features.unsqueeze(0)
         if text_features.ndim == 1:
             text_features = text_features.unsqueeze(0)
+
+        if image_features.ndim != 2 or text_features.ndim != 2:
+            raise ValueError(
+                f"Expected 1D or 2D feature tensors, got image: "
+                f"{image_features.ndim}D, text: {text_features.ndim}D"
+            )
 
         if image_features.shape[-1] != text_features.shape[-1]:
             raise ValueError(
@@ -302,8 +675,10 @@ class PickScorePredictor:
         }
 
         with torch.no_grad():
-            image_features = model.get_image_features(**image_inputs)
-            text_features = model.get_text_features(**text_inputs)
+            raw_img_feat = model.get_image_features(**image_inputs)
+            raw_txt_feat = model.get_text_features(**text_inputs)
+            image_features = self._extract_tensor(raw_img_feat)
+            text_features = self._extract_tensor(raw_txt_feat)
             logit_scale = model.logit_scale
 
         return self.compute_score_from_features(

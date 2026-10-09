@@ -2,6 +2,23 @@
 
 All notable user-facing changes to `image-evaluator` are recorded here.
 
+## [0.7.0] - Unreleased
+
+*Release Candidate build (0.7.0-rc). Not yet released.*
+
+### Changed
+
+- **Predictor Lifecycle Management**: Unified predictor memory release across all 15 metrics in `core.py`, ensuring deterministic garbage collection and GPU cache clearance in `finally` blocks on both success and error without masking underlying exceptions.
+- **Directional CLIP**: Pinned model weights to immutable official repository commit revision; enforce fail-fast rejection of unverified custom model overrides to prevent silent evaluation corruption.
+- **PickScore**: Pinned default model and processor to verified revisions; implemented comprehensive caching and offline download gating; enforced strict metadata contracts for custom remote checkpoints; fixed tuple output handling in CLIP pooling layer.
+- **Sidecar Metadata Contract**: Allowlisted only `.json`, `.yaml`, and `.yml` metadata sidecars in flat input directories; all other unsupported visible files continue to fail fast.
+- **Documentation & Disclosures**: Documented platform support baseline (macOS Apple Silicon / Linux x86_64) and disclosed English prompt constraints across text-conditioned evaluators; eliminated hardcoded version pinning in installation instructions.
+
+### Fixed
+
+- **Pillow 13 Compatibility**: Resolved upstream Pillow 13 deprecation warnings and API changes across image input adapters.
+- **CI & Contract Drift Prevention**: Added `contract-integrity.yml` workflow and registry synchronization scripts (`scripts/sync_readme_registry.py`, `scripts/verify_tag_version.py`) to prevent README, MetricRegistry, and Git tag version drift.
+
 ## [0.6.1] - 2026-09-20
 
 ### Fixed

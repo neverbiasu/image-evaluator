@@ -585,6 +585,9 @@ def main(args=None):
         "metrics": {},
     }
 
+    def _cli_download_callback(asset: Any, msg: str) -> None:
+        print(msg, file=sys.stderr, flush=True)
+
     def _execute_metrics():
         # LAION AI Aesthetic Score
         if "aesthetic" in selected_metrics:
@@ -629,6 +632,7 @@ def main(args=None):
 
             clip_i_predictor = ClipIPredictor(
                 allow_download=parsed_args.allow_download,
+                download_callback=_cli_download_callback,
             )
             if is_folder:
                 clip_i_score = (
@@ -656,6 +660,7 @@ def main(args=None):
 
             dino_predictor = DinoSimilarityPredictor(
                 allow_download=parsed_args.allow_download,
+                download_callback=_cli_download_callback,
             )
             if is_folder:
                 dino_score = dino_predictor.evaluate_folder_dino_similarity(
@@ -806,7 +811,10 @@ def main(args=None):
                 PickScorePredictor,
             )
 
-            pickscore_predictor = PickScorePredictor()
+            pickscore_predictor = PickScorePredictor(
+                allow_download=parsed_args.allow_download,
+                download_callback=_cli_download_callback,
+            )
             if is_folder:
                 pickscore_res = pickscore_predictor.evaluate_folder(
                     parsed_args.image, parsed_args.prompt
@@ -817,6 +825,8 @@ def main(args=None):
                     parsed_args.image, parsed_args.prompt
                 )
             results["metrics"]["pickscore"] = pickscore_score
+            del pickscore_predictor
+            _release_cli_memory()
             if parsed_args.format == "text":
                 print(f"PickScore: {pickscore_score}")
 
@@ -826,7 +836,10 @@ def main(args=None):
                 DirectionalClipPredictor,
             )
 
-            dir_clip_predictor = DirectionalClipPredictor()
+            dir_clip_predictor = DirectionalClipPredictor(
+                allow_download=parsed_args.allow_download,
+                download_callback=_cli_download_callback,
+            )
             dir_clip_score = dir_clip_predictor.evaluate_directional_clip(
                 image_src=parsed_args.reference,
                 image_edit=parsed_args.image,
@@ -834,6 +847,8 @@ def main(args=None):
                 prompt_target=parsed_args.prompt,
             )
             results["metrics"]["directional_clip"] = dir_clip_score
+            del dir_clip_predictor
+            _release_cli_memory()
             if parsed_args.format == "text":
                 print(f"Directional CLIP: {dir_clip_score}")
 
@@ -845,6 +860,7 @@ def main(args=None):
 
             hps_predictor = Hpsv2Predictor(
                 allow_download=parsed_args.allow_download,
+                download_callback=_cli_download_callback,
             )
             if is_folder:
                 hps_score = hps_predictor.evaluate_folder_hpsv2(
@@ -868,6 +884,7 @@ def main(args=None):
 
             ir_predictor = ImageRewardPredictor(
                 allow_download=parsed_args.allow_download,
+                download_callback=_cli_download_callback,
             )
             if is_folder:
                 ir_score = ir_predictor.evaluate_folder_image_reward(
@@ -890,6 +907,7 @@ def main(args=None):
 
             vqa_predictor = VQAScorePredictor(
                 allow_download=parsed_args.allow_download,
+                download_callback=_cli_download_callback,
             )
             if is_folder:
                 vqa_score = vqa_predictor.evaluate_folder_vqascore(

@@ -1,7 +1,9 @@
 """Tests for HPS v2.1 predictor and evaluation pipeline integration."""
 
 import json
-from unittest.mock import patch
+import sys
+from contextlib import contextmanager
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -86,8 +88,8 @@ def test_package_exports():
 def test_download_gating_uncached_raises_error(sample_image):
     """Verify that an uncached model without --allow-download raises error."""
     with patch(
-        "image_evaluator.hpsv2_predictor._is_hpsv2_cached",
-        return_value=False,
+        "image_evaluator.hpsv2_predictor._get_hpsv2_cached_path",
+        return_value=None,
     ):
         predictor = Hpsv2Predictor(allow_download=False)
         with pytest.raises(DownloadNotAllowedError) as exc_info:
@@ -108,8 +110,8 @@ def test_download_gating_uncached_with_allow_download_discloses(sample_image):
         disclosed_assets.append((asset, message))
 
     with patch(
-        "image_evaluator.hpsv2_predictor._is_hpsv2_cached",
-        return_value=False,
+        "image_evaluator.hpsv2_predictor._get_hpsv2_cached_path",
+        return_value=None,
     ), patch(
         "huggingface_hub.hf_hub_download",
         return_value="/tmp/mock_hps.pt",
@@ -138,6 +140,7 @@ def test_download_gating_uncached_with_allow_download_discloses(sample_image):
         assert asset.metric_id == "hpsv2"
         assert asset.model_id == "xswu/HPSv2"
         assert "1972490005" in msg or "1.8 GB" in msg
+
 
 
 def test_hpsv2_math_cosine_exact():
@@ -340,3 +343,147 @@ def test_cli_missing_prompt_fails(sample_image):
     with pytest.raises(SystemExit) as exc_info:
         main(["--metrics", "hpsv2", "--image", sample_image])
     assert exc_info.value.code == 2
+
+
+# ---------------------------------------------------------------------------
+# HPSv2 cache-path branch tests (F3-1/F3-2)
+# ---------------------------------------------------------------------------
+
+
+_MISSING = object()
+
+
+@contextmanager
+def _patch_open_clip_sys(model, preprocess, tokenizer):
+    """Inject a fake open_clip into sys.modules for the duration of the block.
+
+    Uses a sentinel to correctly distinguish 'key absent' from 'key present
+    but None', so the original state is always restored exactly.
+    """
+    fake_oc = MagicMock()
+    fake_oc.create_model_and_transforms.return_value = (
+        model,
+        None,
+        preprocess,
+    )
+    fake_oc.get_tokenizer.return_value = tokenizer
+
+    old = sys.modules.get("open_clip", _MISSING)
+    sys.modules["open_clip"] = fake_oc
+    try:
+        yield fake_oc
+    finally:
+        if old is _MISSING:
+            sys.modules.pop("open_clip", None)
+        else:
+            sys.modules["open_clip"] = old
+
+
+def _make_dummy_open_clip():
+    """Return (model, preprocess, tokenizer) stubs for _ensure_loaded."""
+    model = DummyOpenClipModel(feature_dim=1024)
+    preprocess = lambda pil_img: torch.zeros(3, 224, 224)  # noqa: E731
+    tokenizer = lambda texts: torch.tensor([[100, 1, 2]])  # noqa: E731
+    return model, preprocess, tokenizer
+
+
+def test_ensure_loaded_explicit_path_exists(tmp_path):
+    """Branch A: explicit path exists -> is_cached=True, no download."""
+    fake_ckpt = tmp_path / "fake_hps.pt"
+    fake_ckpt.write_bytes(b"")
+
+    predictor = Hpsv2Predictor(
+        checkpoint_path=str(fake_ckpt),
+        allow_download=False,
+    )
+
+    model, preprocess, tokenizer = _make_dummy_open_clip()
+
+    with _patch_open_clip_sys(model, preprocess, tokenizer), patch(
+        "torch.load",
+        return_value={"state_dict": {}},
+    ), patch("huggingface_hub.hf_hub_download") as mock_dl:
+        predictor._ensure_loaded()
+
+    mock_dl.assert_not_called()
+    assert predictor._model is not None
+
+
+def test_ensure_loaded_explicit_path_missing_blocks_download(tmp_path):
+    """Branch B: missing explicit path -> DownloadNotAllowedError."""
+    from image_evaluator.model_assets import DownloadNotAllowedError
+
+    missing_ckpt = str(tmp_path / "nonexistent.pt")
+
+    predictor = Hpsv2Predictor(
+        checkpoint_path=missing_ckpt,
+        allow_download=False,
+    )
+
+    model, preprocess, tokenizer = _make_dummy_open_clip()
+
+    with _patch_open_clip_sys(model, preprocess, tokenizer):
+        with pytest.raises(DownloadNotAllowedError):
+            predictor._ensure_loaded()
+
+
+def test_ensure_loaded_no_explicit_path_cache_hit(tmp_path):
+    """Branch C: auto path, _get_hpsv2_cached_path() hit -> no download."""
+    fake_ckpt = tmp_path / "cached_hps.pt"
+    fake_ckpt.write_bytes(b"")
+
+    predictor = Hpsv2Predictor(allow_download=False)
+
+    model, preprocess, tokenizer = _make_dummy_open_clip()
+
+    with _patch_open_clip_sys(model, preprocess, tokenizer), patch(
+        "image_evaluator.hpsv2_predictor._get_hpsv2_cached_path",
+        return_value=str(fake_ckpt),
+    ), patch(
+        "torch.load",
+        return_value={"state_dict": {}},
+    ), patch(
+        "huggingface_hub.hf_hub_download"
+    ) as mock_dl:
+        predictor._ensure_loaded()
+
+    mock_dl.assert_not_called()
+    assert predictor._model is not None
+
+
+def test_ensure_loaded_no_explicit_path_cache_miss_downloads_fixed_revision(
+    tmp_path,
+):
+    """Branch D: cache miss -> hf_hub_download with fixed revision."""
+    from image_evaluator.hpsv2_predictor import HPSV2_ASSET
+
+    fake_ckpt = tmp_path / "downloaded_hps.pt"
+    fake_ckpt.write_bytes(b"")
+
+    predictor = Hpsv2Predictor(allow_download=True)
+
+    model, preprocess, tokenizer = _make_dummy_open_clip()
+
+    with _patch_open_clip_sys(model, preprocess, tokenizer), patch(
+        "image_evaluator.hpsv2_predictor._get_hpsv2_cached_path",
+        return_value=None,
+    ), patch(
+        "huggingface_hub.hf_hub_download",
+        return_value=str(fake_ckpt),
+    ) as mock_dl, patch(
+        "torch.load",
+        return_value={"state_dict": {}},
+    ):
+        predictor._ensure_loaded()
+
+    mock_dl.assert_called_once()
+    call_kwargs = mock_dl.call_args
+    # revision must be the pinned 40-hex value from HPSV2_ASSET
+    assert (
+        call_kwargs.kwargs.get("revision") == HPSV2_ASSET.revision
+        or (
+            len(call_kwargs.args) >= 3
+            and call_kwargs.args[2] == HPSV2_ASSET.revision
+        )
+    )
+    assert predictor._model is not None
