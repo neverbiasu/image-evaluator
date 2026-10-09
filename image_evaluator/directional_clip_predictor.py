@@ -1,8 +1,55 @@
 import os
+from typing import Any
 
 import torch
 from PIL import Image
 from transformers import AutoModel, AutoProcessor, AutoTokenizer
+
+from image_evaluator.model_assets import (
+    ModelAsset,
+    check_asset_and_permit_download,
+)
+
+DIRECTIONAL_CLIP_ASSET = ModelAsset(
+    metric_id="directional_clip",
+    model_id="openai/clip-vit-base-patch32",
+    source="huggingface",
+    revision="3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268",
+    estimated_download_bytes=608863580,
+    install_extra=None,
+)
+
+DIRECTIONAL_CLIP_REQUIRED_FILES = (
+    "config.json",
+    "preprocessor_config.json",
+    "pytorch_model.bin",
+    "tokenizer_config.json",
+    "vocab.json",
+    "merges.txt",
+    "special_tokens_map.json",
+    "tokenizer.json",
+)
+
+
+def _is_directional_clip_cached(
+    model_id: str = "openai/clip-vit-base-patch32",
+    revision: str | None = DIRECTIONAL_CLIP_ASSET.revision,
+) -> bool:
+    """Check if model weights and configs are cached locally in HF cache."""
+    try:
+        from huggingface_hub import try_to_load_from_cache
+
+        for filename in DIRECTIONAL_CLIP_REQUIRED_FILES:
+            cached_path = try_to_load_from_cache(
+                model_id, filename, revision=revision
+            )
+            if not (
+                isinstance(cached_path, str) and os.path.exists(cached_path)
+            ):
+                return False
+        return True
+    except Exception:
+        return False
 
 
 class DirectionalClipPredictor:
@@ -18,6 +65,8 @@ class DirectionalClipPredictor:
         self,
         clip_model: str = "openai/clip-vit-base-patch32",
         device=None,
+        allow_download: bool = False,
+        download_callback: Any = None,
     ):
         if device is None:
             self.device = torch.device(
@@ -26,10 +75,56 @@ class DirectionalClipPredictor:
         else:
             self.device = torch.device(device)
 
-        print(f"Loading CLIP model: {clip_model}")
-        self.model = AutoModel.from_pretrained(clip_model).to(self.device)
-        self.processor = AutoProcessor.from_pretrained(clip_model)
-        self.tokenizer = AutoTokenizer.from_pretrained(clip_model)
+        self.clip_model = clip_model
+        self.model = None
+        self.processor = None
+        self.tokenizer = None
+
+        if clip_model != DIRECTIONAL_CLIP_ASSET.model_id:
+            raise ValueError(
+                f"Unsupported clip_model '{clip_model}' for Directional CLIP. "
+                f"Only verified asset '{DIRECTIONAL_CLIP_ASSET.model_id}' "
+                f"is supported."
+            )
+
+        revision = DIRECTIONAL_CLIP_ASSET.revision
+        is_cached = _is_directional_clip_cached(
+            clip_model, revision=revision
+        )
+        check_asset_and_permit_download(
+            asset=DIRECTIONAL_CLIP_ASSET,
+            is_cached=is_cached,
+            allow_download=allow_download,
+            disclosure_callback=download_callback,
+        )
+
+        model = None
+        processor = None
+        tokenizer = None
+        try:
+            model = AutoModel.from_pretrained(
+                clip_model,
+                revision=revision,
+                local_files_only=not allow_download,
+            ).to(self.device)
+            processor = AutoProcessor.from_pretrained(
+                clip_model,
+                revision=revision,
+                local_files_only=not allow_download,
+            )
+            tokenizer = AutoTokenizer.from_pretrained(
+                clip_model,
+                revision=revision,
+                local_files_only=not allow_download,
+            )
+            self.model = model
+            self.processor = processor
+            self.tokenizer = tokenizer
+        except Exception:
+            self.model = None
+            self.processor = None
+            self.tokenizer = None
+            raise
 
     # ------------------------------------------------------------------
     # Public API

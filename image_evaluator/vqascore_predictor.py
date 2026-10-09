@@ -544,7 +544,7 @@ class VQAScorePredictor:
                             arr = (arr * 255.0).clip(0, 255).astype(np.uint8)
                         else:
                             arr = arr.clip(0, 255).astype(np.uint8)
-                    pil_img = Image.fromarray(arr, mode="RGB")
+                    pil_img = Image.fromarray(arr)
                 elif arr.shape[0] == 3:
                     # (C, H, W) transpose
                     arr = np.transpose(arr, (1, 2, 0))
@@ -553,7 +553,7 @@ class VQAScorePredictor:
                             arr = (arr * 255.0).clip(0, 255).astype(np.uint8)
                         else:
                             arr = arr.clip(0, 255).astype(np.uint8)
-                    pil_img = Image.fromarray(arr, mode="RGB")
+                    pil_img = Image.fromarray(arr)
                 else:
                     raise ValueError(
                         f"Unsupported numpy array shape for image: {arr.shape}"
@@ -577,7 +577,7 @@ class VQAScorePredictor:
                         )
                     else:
                         t_arr = t_arr.clip(0, 255).astype(np.uint8)
-                pil_img = Image.fromarray(t_arr, mode="RGB")
+                pil_img = Image.fromarray(t_arr)
             else:
                 shape_str = str(tuple(t.shape))
                 raise ValueError(

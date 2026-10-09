@@ -1,7 +1,9 @@
 """Tests for HPS v2.1 predictor and evaluation pipeline integration."""
 
 import json
-from unittest.mock import patch
+import sys
+from contextlib import contextmanager
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -348,33 +350,33 @@ def test_cli_missing_prompt_fails(sample_image):
 # ---------------------------------------------------------------------------
 
 
-import sys as _sys
-from contextlib import contextmanager as _contextmanager
-from unittest.mock import MagicMock as _MagicMock
-
 _MISSING = object()
 
 
-@_contextmanager
+@contextmanager
 def _patch_open_clip_sys(model, preprocess, tokenizer):
     """Inject a fake open_clip into sys.modules for the duration of the block.
 
     Uses a sentinel to correctly distinguish 'key absent' from 'key present
     but None', so the original state is always restored exactly.
     """
-    fake_oc = _MagicMock()
-    fake_oc.create_model_and_transforms.return_value = (model, None, preprocess)
+    fake_oc = MagicMock()
+    fake_oc.create_model_and_transforms.return_value = (
+        model,
+        None,
+        preprocess,
+    )
     fake_oc.get_tokenizer.return_value = tokenizer
 
-    old = _sys.modules.get("open_clip", _MISSING)
-    _sys.modules["open_clip"] = fake_oc
+    old = sys.modules.get("open_clip", _MISSING)
+    sys.modules["open_clip"] = fake_oc
     try:
         yield fake_oc
     finally:
         if old is _MISSING:
-            _sys.modules.pop("open_clip", None)
+            sys.modules.pop("open_clip", None)
         else:
-            _sys.modules["open_clip"] = old
+            sys.modules["open_clip"] = old
 
 
 def _make_dummy_open_clip():
@@ -386,9 +388,7 @@ def _make_dummy_open_clip():
 
 
 def test_ensure_loaded_explicit_path_exists(tmp_path):
-    """Branch A: explicit checkpoint_path exists -> is_cached=True, no download."""
-    from unittest.mock import MagicMock, patch
-
+    """Branch A: explicit path exists -> is_cached=True, no download."""
     fake_ckpt = tmp_path / "fake_hps.pt"
     fake_ckpt.write_bytes(b"")
 
@@ -410,7 +410,7 @@ def test_ensure_loaded_explicit_path_exists(tmp_path):
 
 
 def test_ensure_loaded_explicit_path_missing_blocks_download(tmp_path):
-    """Branch B: explicit path missing + allow_download=False -> DownloadNotAllowedError."""
+    """Branch B: missing explicit path -> DownloadNotAllowedError."""
     from image_evaluator.model_assets import DownloadNotAllowedError
 
     missing_ckpt = str(tmp_path / "nonexistent.pt")
@@ -428,9 +428,7 @@ def test_ensure_loaded_explicit_path_missing_blocks_download(tmp_path):
 
 
 def test_ensure_loaded_no_explicit_path_cache_hit(tmp_path):
-    """Branch C: no explicit path, _get_hpsv2_cached_path() hit -> no download."""
-    from unittest.mock import patch
-
+    """Branch C: auto path, _get_hpsv2_cached_path() hit -> no download."""
     fake_ckpt = tmp_path / "cached_hps.pt"
     fake_ckpt.write_bytes(b"")
 
@@ -453,10 +451,11 @@ def test_ensure_loaded_no_explicit_path_cache_hit(tmp_path):
     assert predictor._model is not None
 
 
-def test_ensure_loaded_no_explicit_path_cache_miss_downloads_fixed_revision(tmp_path):
-    """Branch D: cache miss + allow_download=True -> hf_hub_download with fixed revision."""
+def test_ensure_loaded_no_explicit_path_cache_miss_downloads_fixed_revision(
+    tmp_path,
+):
+    """Branch D: cache miss -> hf_hub_download with fixed revision."""
     from image_evaluator.hpsv2_predictor import HPSV2_ASSET
-    from unittest.mock import patch
 
     fake_ckpt = tmp_path / "downloaded_hps.pt"
     fake_ckpt.write_bytes(b"")

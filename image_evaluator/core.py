@@ -2,7 +2,7 @@ import gc
 import os
 import time
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, Callable
 
 import torch
 
@@ -34,6 +34,50 @@ PAIRWISE_METRICS = {
 SOURCE_PROMPT_METRICS = {
     spec.id for spec in _ALL_SPECS if "source_prompt" in spec.inputs.required
 }
+
+
+def _release_eval_memory(suppress_errors: bool = False) -> None:
+    """Collect garbage and clear the CUDA cache after a predictor is done.
+
+    Args:
+        suppress_errors: When True, suppress errors during cleanup so an
+            in-flight exception from predictor construction or scoring is
+            not overwritten. When False, cleanup errors propagate normally.
+    """
+    try:
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        if suppress_errors:
+            return
+        raise
+
+
+def _run_with_predictor(
+    factory: Callable[[], Any],
+    operation: Callable[[Any], Any],
+) -> Any:
+    """Execute an operation with a predictor, guaranteeing reference release.
+
+    Constructs the predictor via factory, executes operation to compute the
+    score, drops the reference to the predictor completely, and then runs
+    _release_eval_memory.
+
+    If construction or operation raises, cleanup errors are suppressed to
+    preserve the primary failure. If scoring succeeds, cleanup errors
+    propagate normally.
+    """
+    pred = None
+    has_error = True
+    try:
+        pred = factory()
+        result = operation(pred)
+        has_error = False
+        return result
+    finally:
+        del pred
+        _release_eval_memory(suppress_errors=has_error)
 
 
 def evaluate(
@@ -229,53 +273,57 @@ def evaluate(
         )
 
         model_name = kwargs.get("aesthetic_model_name", "vit_l_14")
-        pred_aesthetic = LaionAIAestheticPredictor(
-            model_name=model_name, device=device
+        results["aesthetic"] = _run_with_predictor(
+            lambda: LaionAIAestheticPredictor(
+                model_name=model_name, device=device
+            ),
+            lambda pred: (
+                pred.evaluate_folder_aesthetic_score(str(image))
+                if is_image_folder
+                else pred.evaluate_aesthetic_score(image)
+            ),
         )
-        if is_image_folder:
-            score = pred_aesthetic.evaluate_folder_aesthetic_score(
-                str(image)
-            )
-        else:
-            score = pred_aesthetic.evaluate_aesthetic_score(image)
-        results["aesthetic"] = score
 
     # 2. CLIP Score
     if "clip" in selected:
         from image_evaluator.clip_score_predictor import ClipScorePredictor
 
         clip_model = kwargs.get("clip_model", "openai/clip-vit-base-patch32")
-        pred_clip = ClipScorePredictor(clip_model=clip_model, device=device)
-        results["clip"] = pred_clip.evaluate_clip_score(
-            image, folder_prompt if is_image_folder else single_prompt
+        results["clip"] = _run_with_predictor(
+            lambda: ClipScorePredictor(clip_model=clip_model, device=device),
+            lambda pred: pred.evaluate_clip_score(
+                image, folder_prompt if is_image_folder else single_prompt
+            ),
         )
 
     # 3. ArcFace Distance
     if "arcface" in selected:
         from image_evaluator.arcface_dist_predictor import ArcFaceDistPredictor
 
-        pred_arcface = ArcFaceDistPredictor(device=device)
-        if is_image_folder:
-            results["arcface"] = pred_arcface.evaluate_folder_arcface_distance(
-                str(reference), str(image)
-            )
-        else:
-            results["arcface"] = pred_arcface.evaluate_arcface_distance(
-                reference, image
-            )
+        results["arcface"] = _run_with_predictor(
+            lambda: ArcFaceDistPredictor(device=device),
+            lambda pred: (
+                pred.evaluate_folder_arcface_distance(
+                    str(reference), str(image)
+                )
+                if is_image_folder
+                else pred.evaluate_arcface_distance(reference, image)
+            ),
+        )
 
     # 4. LPIPS Distance
     if "lpips" in selected:
         from image_evaluator.lpips_predictor import LPIPSPredictor
 
         net = kwargs.get("lpips_net", "alex")
-        pred_lpips = LPIPSPredictor(net=net, device=device)
-        if is_image_folder:
-            results["lpips"] = pred_lpips.evaluate_folder_lpips(
-                str(reference), str(image)
-            )
-        else:
-            results["lpips"] = pred_lpips.evaluate_lpips(reference, image)
+        results["lpips"] = _run_with_predictor(
+            lambda: LPIPSPredictor(net=net, device=device),
+            lambda pred: (
+                pred.evaluate_folder_lpips(str(reference), str(image))
+                if is_image_folder
+                else pred.evaluate_lpips(reference, image)
+            ),
+        )
 
     # 5. SSIM
     if "ssim" in selected:
@@ -283,36 +331,38 @@ def evaluate(
 
         window_size = kwargs.get("ssim_window_size", 11)
         sigma = kwargs.get("ssim_sigma", 1.5)
-        pred_ssim = SSIMPredictor(
-            window_size=window_size, sigma=sigma, device=device
+        results["ssim"] = _run_with_predictor(
+            lambda: SSIMPredictor(
+                window_size=window_size, sigma=sigma, device=device
+            ),
+            lambda pred: (
+                pred.evaluate_folder_ssim(str(reference), str(image))
+                if is_image_folder
+                else pred.evaluate_ssim(reference, image)
+            ),
         )
-        if is_image_folder:
-            results["ssim"] = pred_ssim.evaluate_folder_ssim(
-                str(reference), str(image)
-            )
-        else:
-            results["ssim"] = pred_ssim.evaluate_ssim(reference, image)
 
     # 6. PSNR
     if "psnr" in selected:
         from image_evaluator.psnr_predictor import PSNRPredictor
 
-        pred_psnr = PSNRPredictor(device=device)
-        if is_image_folder:
-            results["psnr"] = pred_psnr.evaluate_folder_psnr(
-                str(reference), str(image)
-            )
-        else:
-            results["psnr"] = pred_psnr.evaluate_psnr(reference, image)
+        results["psnr"] = _run_with_predictor(
+            lambda: PSNRPredictor(device=device),
+            lambda pred: (
+                pred.evaluate_folder_psnr(str(reference), str(image))
+                if is_image_folder
+                else pred.evaluate_psnr(reference, image)
+            ),
+        )
 
     # 7. FID
     if "fid" in selected:
         from image_evaluator.fid_predictor import FIDPredictor
 
         fid_device = device if device is not None else "cpu"
-        pred_fid = FIDPredictor(device=fid_device)
-        results["fid"] = pred_fid.evaluate_folder_fid(
-            str(reference), str(image)
+        results["fid"] = _run_with_predictor(
+            lambda: FIDPredictor(device=fid_device),
+            lambda pred: pred.evaluate_folder_fid(str(reference), str(image)),
         )
 
     # 8. KID
@@ -320,21 +370,52 @@ def evaluate(
         from image_evaluator.kid_predictor import KIDPredictor
 
         kid_device = device if device is not None else "cpu"
-        pred_kid = KIDPredictor(device=kid_device)
-        results["kid"] = pred_kid.evaluate_folder_kid(
-            str(reference), str(image)
+        results["kid"] = _run_with_predictor(
+            lambda: KIDPredictor(device=kid_device),
+            lambda pred: pred.evaluate_folder_kid(str(reference), str(image)),
         )
 
     # 9. PickScore
     if "pickscore" in selected:
         from image_evaluator.pickscore_predictor import PickScorePredictor
 
-        pred_pick = PickScorePredictor(device=device)
-        if is_image_folder:
-            pick_res = pred_pick.evaluate_folder(str(image), folder_prompt)
-            results["pickscore"] = pick_res.mean_score
-        else:
-            results["pickscore"] = pred_pick.evaluate(image, single_prompt)
+        model_name = kwargs.get("pickscore_model", None)
+        processor_name = kwargs.get("pickscore_processor", None)
+        model_revision = kwargs.get("pickscore_model_revision", None)
+        processor_revision = kwargs.get("pickscore_processor_revision", None)
+        model_download_bytes = kwargs.get(
+            "pickscore_model_download_bytes", None
+        )
+        processor_download_bytes = kwargs.get(
+            "pickscore_processor_download_bytes", None
+        )
+        model_required_files = kwargs.get(
+            "pickscore_model_required_files", None
+        )
+        processor_required_files = kwargs.get(
+            "pickscore_processor_required_files", None
+        )
+
+        results["pickscore"] = _run_with_predictor(
+            lambda: PickScorePredictor(
+                device=device,
+                model_name=model_name,
+                processor_name=processor_name,
+                allow_download=allow_download,
+                download_callback=download_callback,
+                model_revision=model_revision,
+                processor_revision=processor_revision,
+                model_download_bytes=model_download_bytes,
+                processor_download_bytes=processor_download_bytes,
+                model_required_files=model_required_files,
+                processor_required_files=processor_required_files,
+            ),
+            lambda pred: (
+                pred.evaluate_folder(str(image), folder_prompt).mean_score
+                if is_image_folder
+                else pred.evaluate(image, single_prompt)
+            ),
+        )
 
     # 10. Directional CLIP
     if "directional_clip" in selected:
@@ -343,42 +424,37 @@ def evaluate(
         )
 
         clip_model = kwargs.get("clip_model", "openai/clip-vit-base-patch32")
-        pred_dir_clip = DirectionalClipPredictor(
-            clip_model=clip_model, device=device
-        )
-        results["directional_clip"] = (
-            pred_dir_clip.evaluate_directional_clip(
+        results["directional_clip"] = _run_with_predictor(
+            lambda: DirectionalClipPredictor(
+                clip_model=clip_model,
+                device=device,
+                allow_download=allow_download,
+                download_callback=download_callback,
+            ),
+            lambda pred: pred.evaluate_directional_clip(
                 image_src=reference,
                 image_edit=image,
                 prompt_src=str(source_prompt),
                 prompt_target=single_prompt,
-            )
+            ),
         )
-
-    def _release_eval_memory() -> None:
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
 
     # 11. CLIP-I
     if "clip_i" in selected:
         from image_evaluator.clip_i_predictor import ClipIPredictor
 
-        pred_clip_i = ClipIPredictor(
-            device=device,
-            allow_download=allow_download,
-            download_callback=download_callback,
+        results["clip_i"] = _run_with_predictor(
+            lambda: ClipIPredictor(
+                device=device,
+                allow_download=allow_download,
+                download_callback=download_callback,
+            ),
+            lambda pred: (
+                pred.evaluate_folder_clip_i(str(reference), str(image))
+                if is_image_folder
+                else pred.evaluate_clip_i(reference, image)
+            ),
         )
-        if is_image_folder:
-            results["clip_i"] = pred_clip_i.evaluate_folder_clip_i(
-                str(reference), str(image)
-            )
-        else:
-            results["clip_i"] = pred_clip_i.evaluate_clip_i(
-                reference, image
-            )
-        del pred_clip_i
-        _release_eval_memory()
 
     # 12. DINO Similarity
     if "dino_similarity" in selected:
@@ -386,43 +462,37 @@ def evaluate(
             DinoSimilarityPredictor,
         )
 
-        pred_dino = DinoSimilarityPredictor(
-            device=device,
-            allow_download=allow_download,
-            download_callback=download_callback,
-        )
-        if is_image_folder:
-            results["dino_similarity"] = (
-                pred_dino.evaluate_folder_dino_similarity(
+        results["dino_similarity"] = _run_with_predictor(
+            lambda: DinoSimilarityPredictor(
+                device=device,
+                allow_download=allow_download,
+                download_callback=download_callback,
+            ),
+            lambda pred: (
+                pred.evaluate_folder_dino_similarity(
                     str(reference), str(image)
                 )
-            )
-        else:
-            results["dino_similarity"] = pred_dino.evaluate_dino_similarity(
-                reference, image
-            )
-        del pred_dino
-        _release_eval_memory()
+                if is_image_folder
+                else pred.evaluate_dino_similarity(reference, image)
+            ),
+        )
 
     # 13. HPS v2.1
     if "hpsv2" in selected:
         from image_evaluator.hpsv2_predictor import Hpsv2Predictor
 
-        pred_hps = Hpsv2Predictor(
-            device=device,
-            allow_download=allow_download,
-            download_callback=download_callback,
+        results["hpsv2"] = _run_with_predictor(
+            lambda: Hpsv2Predictor(
+                device=device,
+                allow_download=allow_download,
+                download_callback=download_callback,
+            ),
+            lambda pred: (
+                pred.evaluate_folder_hpsv2(str(image), folder_prompt)
+                if is_image_folder
+                else pred.evaluate_hpsv2(image, single_prompt)
+            ),
         )
-        if is_image_folder:
-            results["hpsv2"] = pred_hps.evaluate_folder_hpsv2(
-                str(image), folder_prompt
-            )
-        else:
-            results["hpsv2"] = pred_hps.evaluate_hpsv2(
-                image, single_prompt
-            )
-        del pred_hps
-        _release_eval_memory()
 
     # 14. ImageReward
     if "image_reward" in selected:
@@ -430,21 +500,18 @@ def evaluate(
             ImageRewardPredictor,
         )
 
-        pred_ir = ImageRewardPredictor(
-            device=device,
-            allow_download=allow_download,
-            download_callback=download_callback,
+        results["image_reward"] = _run_with_predictor(
+            lambda: ImageRewardPredictor(
+                device=device,
+                allow_download=allow_download,
+                download_callback=download_callback,
+            ),
+            lambda pred: (
+                pred.evaluate_folder_image_reward(str(image), folder_prompt)
+                if is_image_folder
+                else pred.evaluate_image_reward(image, single_prompt)
+            ),
         )
-        if is_image_folder:
-            results["image_reward"] = pred_ir.evaluate_folder_image_reward(
-                str(image), folder_prompt
-            )
-        else:
-            results["image_reward"] = pred_ir.evaluate_image_reward(
-                image, single_prompt
-            )
-        del pred_ir
-        _release_eval_memory()
 
     # 15. VQAScore
     if "vqascore" in selected:
@@ -452,21 +519,18 @@ def evaluate(
             VQAScorePredictor,
         )
 
-        pred_vqa = VQAScorePredictor(
-            device=device,
-            allow_download=allow_download,
-            download_callback=download_callback,
+        results["vqascore"] = _run_with_predictor(
+            lambda: VQAScorePredictor(
+                device=device,
+                allow_download=allow_download,
+                download_callback=download_callback,
+            ),
+            lambda pred: (
+                pred.evaluate_folder_vqascore(str(image), folder_prompt)
+                if is_image_folder
+                else pred.evaluate_vqascore(image, single_prompt)
+            ),
         )
-        if is_image_folder:
-            results["vqascore"] = pred_vqa.evaluate_folder_vqascore(
-                str(image), folder_prompt
-            )
-        else:
-            results["vqascore"] = pred_vqa.evaluate_vqascore(
-                image, single_prompt
-            )
-        del pred_vqa
-        _release_eval_memory()
 
     if detailed:
         duration_seconds = max(0.0, time.perf_counter() - start_time)

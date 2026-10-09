@@ -194,7 +194,7 @@ def to_pil_image(image_input: Any) -> Image.Image:
         tensor = to_torch_tensor(image_input)
         hwc = tensor.squeeze(0).permute(1, 2, 0).cpu().numpy()
         arr_uint8 = (hwc * 255.0).clip(0, 255).astype(np.uint8)
-        return Image.fromarray(arr_uint8, mode="RGB")
+        return Image.fromarray(arr_uint8)
 
     raise ValueError(
         f"Unsupported image input type: {type(image_input).__name__}. "

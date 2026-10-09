@@ -44,6 +44,9 @@ def predictor(mock_clip_components):
     """DirectionalClipPredictor with mocked CLIP backbone on CPU."""
     mock_model, mock_processor, mock_tokenizer = mock_clip_components
     with patch(
+        "image_evaluator.directional_clip_predictor._is_directional_clip_cached",
+        return_value=True,
+    ), patch(
         "image_evaluator.directional_clip_predictor.AutoModel"
         ".from_pretrained",
         return_value=mock_model,
@@ -57,7 +60,7 @@ def predictor(mock_clip_components):
         return_value=mock_tokenizer,
     ):
         instance = DirectionalClipPredictor(
-            clip_model="mock-clip", device="cpu"
+            clip_model="openai/clip-vit-base-patch32", device="cpu"
         )
         instance.model = mock_model
         return instance
