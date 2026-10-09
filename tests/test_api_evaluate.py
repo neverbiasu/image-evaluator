@@ -484,6 +484,11 @@ def test_evaluate_directional_clip_in_memory_pil():
     with (
         patch(
             "image_evaluator.directional_clip_predictor."
+            "_is_directional_clip_cached",
+            return_value=True,
+        ) as mock_cached,
+        patch(
+            "image_evaluator.directional_clip_predictor."
             "AutoModel.from_pretrained"
         ) as mock_model_cls,
         patch(
@@ -518,6 +523,10 @@ def test_evaluate_directional_clip_in_memory_pil():
             source_prompt="a gray square",
             device="cpu",
         )
+        mock_cached.assert_called_once_with(
+            "openai/clip-vit-base-patch32",
+            revision="3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268",
+        )
         assert "directional_clip" in res
         assert isinstance(res["directional_clip"], float)
 
@@ -528,6 +537,11 @@ def test_evaluate_directional_clip_in_memory_tensor():
     t_edit = torch.ones(3, 32, 32)
 
     with (
+        patch(
+            "image_evaluator.directional_clip_predictor."
+            "_is_directional_clip_cached",
+            return_value=True,
+        ) as mock_cached,
         patch(
             "image_evaluator.directional_clip_predictor."
             "AutoModel.from_pretrained"
@@ -563,6 +577,10 @@ def test_evaluate_directional_clip_in_memory_tensor():
             prompt="target prompt",
             source_prompt="source prompt",
             device="cpu",
+        )
+        mock_cached.assert_called_once_with(
+            "openai/clip-vit-base-patch32",
+            revision="3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268",
         )
         assert "directional_clip" in res
 
@@ -672,6 +690,11 @@ def test_evaluate_mixed_metrics_with_directional_clip():
     with (
         patch(
             "image_evaluator.directional_clip_predictor."
+            "_is_directional_clip_cached",
+            return_value=True,
+        ) as mock_cached,
+        patch(
+            "image_evaluator.directional_clip_predictor."
             "AutoModel.from_pretrained"
         ) as mock_model_cls,
         patch(
@@ -705,6 +728,10 @@ def test_evaluate_mixed_metrics_with_directional_clip():
             prompt="target",
             source_prompt="source",
             device="cpu",
+        )
+        mock_cached.assert_called_once_with(
+            "openai/clip-vit-base-patch32",
+            revision="3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268",
         )
         assert "ssim" in res
         assert "directional_clip" in res
