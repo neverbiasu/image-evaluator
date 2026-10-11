@@ -95,14 +95,17 @@ def test_combined_pairwise_modern_metrics(
 
 
 def test_combined_prompt_modern_metrics(sample_image: str) -> None:
-    """Verify hpsv2, image_reward, and vqascore execute together."""
+    """Verify hpsv2, image_reward, and vqascore execute together with clip."""
     with patch(
+        "image_evaluator.clip_score_predictor.ClipScorePredictor"
+    ) as MockClip, patch(
         "image_evaluator.hpsv2_predictor.Hpsv2Predictor"
     ) as MockHps, patch(
         "image_evaluator.image_reward_predictor.ImageRewardPredictor"
     ) as MockIR, patch(
         "image_evaluator.vqascore_predictor.VQAScorePredictor"
     ) as MockVQA:
+        MockClip.return_value.evaluate_clip_score.return_value = 0.732
         MockHps.return_value.evaluate_hpsv2.return_value = 0.284
         MockIR.return_value.evaluate_image_reward.return_value = 0.612
         MockVQA.return_value.evaluate_vqascore.return_value = 0.745
@@ -115,10 +118,11 @@ def test_combined_prompt_modern_metrics(sample_image: str) -> None:
             allow_download=True,
         )
         assert isinstance(res, dict)
+        assert res["clip"] == pytest.approx(0.732, abs=1e-4)
         assert res["hpsv2"] == pytest.approx(0.284, abs=1e-4)
         assert res["image_reward"] == pytest.approx(0.612, abs=1e-4)
         assert res["vqascore"] == pytest.approx(0.745, abs=1e-4)
-        assert "clip" in res
+        assert MockClip.return_value.evaluate_clip_score.called
 
 
 def test_full_fifteen_metric_heterogeneous_combination(
@@ -126,6 +130,8 @@ def test_full_fifteen_metric_heterogeneous_combination(
 ) -> None:
     """Verify mixed pairwise, prompt, and aesthetic metrics evaluate."""
     with patch(
+        "image_evaluator.laion_ai_aesthetic_predictor.LaionAIAestheticPredictor"
+    ) as MockAesthetic, patch(
         "image_evaluator.clip_i_predictor.ClipIPredictor"
     ) as MockClipI, patch(
         "image_evaluator.dino_similarity_predictor.DinoSimilarityPredictor"
@@ -136,6 +142,7 @@ def test_full_fifteen_metric_heterogeneous_combination(
     ) as MockIR, patch(
         "image_evaluator.vqascore_predictor.VQAScorePredictor"
     ) as MockVQA:
+        MockAesthetic.return_value.evaluate_aesthetic_score.return_value = 6.45
         MockClipI.return_value.evaluate_clip_i.return_value = 0.85
         MockDino.return_value.evaluate_dino_similarity.return_value = 0.89
         MockHps.return_value.evaluate_hpsv2.return_value = 0.29
@@ -161,6 +168,7 @@ def test_full_fifteen_metric_heterogeneous_combination(
         )
 
         assert len(result.scores) == 8
+        assert result.scores["aesthetic"] == pytest.approx(6.45, abs=1e-4)
         assert result.scores["clip_i"] == pytest.approx(0.85, abs=1e-4)
         assert result.scores["dino_similarity"] == pytest.approx(
             0.89, abs=1e-4
@@ -168,9 +176,9 @@ def test_full_fifteen_metric_heterogeneous_combination(
         assert result.scores["hpsv2"] == pytest.approx(0.29, abs=1e-4)
         assert result.scores["image_reward"] == pytest.approx(0.55, abs=1e-4)
         assert result.scores["vqascore"] == pytest.approx(0.78, abs=1e-4)
-        assert "aesthetic" in result.scores
         assert "ssim" in result.scores
         assert "psnr" in result.scores
+        assert MockAesthetic.return_value.evaluate_aesthetic_score.called
 
         # Verify JSON serialization without drift
         json_output = result.to_json()
