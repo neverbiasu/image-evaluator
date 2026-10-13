@@ -131,6 +131,12 @@ class FIDResult(dict[str, Any]):
             f"Nref={self.Nref}, Ngen={self.Ngen})"
         )
 
+    def __float__(self) -> float:
+        return float(self.fid)
+
+    def __format__(self, format_spec: str) -> str:
+        return format(self.fid, format_spec)
+
 
 class FIDPredictor:
     """FID distance predictor using clean-fid under fixed clean protocol."""

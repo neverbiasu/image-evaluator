@@ -237,14 +237,18 @@ class ClipScorePredictor:
 
     def evaluate_clip_score(
         self,
-        real_path,
-        fake_path,
+        real_path=None,
+        fake_path=None,
         real_flag="img",
         fake_flag="txt",
         batch_size=50,
         num_workers=None,
+        *,
+        image_path=None,
+        image=None,
+        prompt=None,
     ):
-        """Evaluate CLIP score between images and text
+        """Evaluate CLIP score between images and text.
 
         Supports both single files and folders evaluation.
 
@@ -259,6 +263,12 @@ class ClipScorePredictor:
         Returns:
             float: CLIP score
         """
+        real_path = image or image_path or real_path
+        fake_path = prompt or fake_path
+        if real_path is None or fake_path is None:
+            raise ValueError(
+                "image (or real_path) and prompt (or fake_path) are required."
+            )
         # Check if it's a single file or in-memory image
         is_mem = not isinstance(real_path, (str, os.PathLike))
         is_single_real = is_mem or (
@@ -281,14 +291,17 @@ class ClipScorePredictor:
 
     def evaluate_folder_clip_score(
         self,
-        real_path,
-        fake_path,
+        real_path=None,
+        fake_path=None,
         real_flag="img",
         fake_flag="txt",
         batch_size=50,
         num_workers=None,
+        *,
+        folder_path=None,
+        prompt=None,
     ):
-        """Evaluate CLIP score between multiple files in folders
+        """Evaluate CLIP score between multiple files in folders.
 
         Args:
             real_path: Path to folder containing real inputs
@@ -301,6 +314,12 @@ class ClipScorePredictor:
         Returns:
             float: CLIP score
         """
+        real_path = folder_path or real_path
+        fake_path = prompt or fake_path
+        if real_path is None or fake_path is None:
+            raise ValueError(
+                "folder_path (or real_path) and prompt (or fake_path) are required."
+            )
         # 强制将批大小设置为1，避免合并不同大小的张量
         batch_size = 1
         # 禁用多进程加载以避免工作进程中的错误

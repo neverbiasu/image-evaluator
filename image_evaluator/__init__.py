@@ -57,6 +57,10 @@ _EXPORTS = {
         "image_evaluator.laion_ai_aesthetic_predictor",
         "LaionAIAestheticPredictor",
     ),
+    "LaionAiAestheticPredictor": (
+        "image_evaluator.laion_ai_aesthetic_predictor",
+        "LaionAiAestheticPredictor",
+    ),
     "PickScorePredictor": (
         "image_evaluator.pickscore_predictor",
         "PickScorePredictor",

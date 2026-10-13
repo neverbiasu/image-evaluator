@@ -141,6 +141,12 @@ class KIDResult(dict[str, Any]):
             f"Nref={self.Nref}, Ngen={self.Ngen})"
         )
 
+    def __float__(self) -> float:
+        return float(self.kid)
+
+    def __format__(self, format_spec: str) -> str:
+        return format(self.kid, format_spec)
+
 
 class KIDPredictor:
     """KID distance predictor using clean-fid under fixed clean protocol."""
@@ -296,3 +302,6 @@ class KIDPredictor:
             Nref=Nref,
             Ngen=Ngen,
         )
+
+    # Backward-compatible convenience alias
+    evaluate_kid = evaluate_folder_kid

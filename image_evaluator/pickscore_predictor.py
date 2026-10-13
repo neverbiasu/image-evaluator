@@ -750,18 +750,31 @@ class PickScorePredictor:
             scores=scores,
         )
 
-    def evaluate_pickscore(self, image_or_folder: str, prompt: str) -> float:
+    def evaluate_pickscore(
+        self,
+        image_or_folder: str | None = None,
+        prompt: str = "",
+        *,
+        image_path: str | None = None,
+    ) -> float:
         """Convenience method accepting either a single image or a folder.
 
         Args:
             image_or_folder: Path to image file or directory of images.
             prompt: Text prompt describing the image.
+            image_path: Backward-compatible keyword alias for image_or_folder.
 
         Returns:
             float: PickScore scalar (for single image) or mean score
                 (for folder).
         """
-        if os.path.isdir(image_or_folder):
-            res = self.evaluate_folder(image_or_folder, prompt)
+        target = image_or_folder or image_path
+        if target is None:
+            raise ValueError("image_or_folder or image_path must be provided.")
+        if os.path.isdir(target):
+            res = self.evaluate_folder(target, prompt)
             return res.mean_score
-        return self.evaluate(image_or_folder, prompt)
+        return self.evaluate(target, prompt)
+
+    # Backward-compatible convenience alias
+    evaluate_folder_pickscore = evaluate_folder

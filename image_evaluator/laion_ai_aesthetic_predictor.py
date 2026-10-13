@@ -126,3 +126,7 @@ class LaionAIAestheticPredictor:
                 scores.append(score)
 
         return sum(scores) / len(scores) if scores else None
+
+
+# Backward-compatible alias
+LaionAiAestheticPredictor = LaionAIAestheticPredictor

@@ -114,3 +114,7 @@ class ArcFaceDistPredictor:
                 raise ValueError(f"Unscorable pair: {ref_path}, {gen_path}")
             distances.append(dist)
         return float(np.mean(distances))
+
+    # Backward-compatible convenience aliases
+    evaluate_arcface = evaluate_arcface_distance
+    evaluate_folder_arcface = evaluate_folder_arcface_distance

@@ -318,14 +318,14 @@ See the full [Task Selection Guide](docs-site/content/docs/guides/task-selection
 
 ## Release Status
 
-| Area | `0.3.0` status |
+| Area | `0.7.0` status |
 | :--- | :--- |
-| Metrics | Aesthetic, CLIP, ArcFace, LPIPS, SSIM, PSNR, FID, KID, PickScore |
-| macOS | Verified on Apple Silicon with Python 3.11 |
-| Linux | Clean install and test suite verified on GitHub Actions with Python 3.11 |
+| Metrics | 15 registered metrics; see the [Metric Selection](#metric-selection) table for names, inputs, and directions |
+| macOS | Apple Silicon and the 0.7.0 macOS release preflight verified with Python 3.11 |
+| Linux | 0.7.0 release preflight and package publication workflow verified with Python 3.11 |
 | Windows | External Python 3.12 smoke test passed for CLIP, LPIPS, SSIM, and PSNR; full support remains unverified |
-| Dataset metrics | FID and KID fully implemented via clean-fid 0.1.35 under clean Inception-v3 protocol with deterministic seed=0 |
-| Human preference | PickScore fully implemented via PickScore_v1 (yuvalkirstain/PickScore_v1) with calibrated likelihood logits |
+| Dataset metrics | FID and KID use clean-fid 0.1.35; small datasets require cautious interpretation |
+| Model-backed metrics | Uncached model assets require explicit `--allow-download`; choose metrics for the task rather than treating their scores as interchangeable |
 
 See [CHANGELOG.md](CHANGELOG.md) for the accepted user-facing changes and
 known limitations.
