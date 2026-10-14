@@ -1,13 +1,13 @@
 """Tests for backward-compatible aliases and formatting methods."""
 
 from image_evaluator import (
+    ArcFaceDistPredictor,
+    ClipScorePredictor,
+    FIDPredictor,
+    KIDPredictor,
     LaionAIAestheticPredictor,
     LaionAiAestheticPredictor,
-    ArcFaceDistPredictor,
-    KIDPredictor,
-    FIDPredictor,
     PickScorePredictor,
-    ClipScorePredictor,
 )
 from image_evaluator.fid_predictor import FIDResult
 from image_evaluator.kid_predictor import KIDResult
@@ -20,8 +20,14 @@ def test_laion_aesthetic_alias():
 def test_arcface_aliases():
     assert hasattr(ArcFaceDistPredictor, "evaluate_arcface")
     assert hasattr(ArcFaceDistPredictor, "evaluate_folder_arcface")
-    assert ArcFaceDistPredictor.evaluate_arcface == ArcFaceDistPredictor.evaluate_arcface_distance
-    assert ArcFaceDistPredictor.evaluate_folder_arcface == ArcFaceDistPredictor.evaluate_folder_arcface_distance
+    arc_eval = ArcFaceDistPredictor.evaluate_arcface
+    arc_canonical = ArcFaceDistPredictor.evaluate_arcface_distance
+    assert arc_eval == arc_canonical
+    arc_folder = ArcFaceDistPredictor.evaluate_folder_arcface
+    arc_folder_canonical = (
+        ArcFaceDistPredictor.evaluate_folder_arcface_distance
+    )
+    assert arc_folder == arc_folder_canonical
 
 
 def test_kid_aliases():
@@ -31,7 +37,14 @@ def test_kid_aliases():
 
 def test_pickscore_aliases():
     assert hasattr(PickScorePredictor, "evaluate_folder_pickscore")
-    assert PickScorePredictor.evaluate_folder_pickscore == PickScorePredictor.evaluate_folder
+    pick_folder = PickScorePredictor.evaluate_folder_pickscore
+    pick_canonical = PickScorePredictor.evaluate_folder
+    assert pick_folder == pick_canonical
+
+
+def test_clip_and_fid_imports():
+    assert hasattr(ClipScorePredictor, "evaluate_clip_score")
+    assert hasattr(FIDPredictor, "evaluate_fid")
 
 
 def test_fid_result_formatting():

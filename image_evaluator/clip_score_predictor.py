@@ -318,7 +318,8 @@ class ClipScorePredictor:
         fake_path = prompt or fake_path
         if real_path is None or fake_path is None:
             raise ValueError(
-                "folder_path (or real_path) and prompt (or fake_path) are required."
+                "folder_path (or real_path) and prompt "
+                "(or fake_path) are required."
             )
         # 强制将批大小设置为1，避免合并不同大小的张量
         batch_size = 1
